@@ -1,2 +1,2 @@
 # Crystals
-CuarzoOS Wayland compositor.
+

@@ -1,15 +1,13 @@
 #ifndef SURFACEVIEW_H
 #define SURFACEVIEW_H
 
-#include <core/Global.h>
-#include <AK/nodes/AKRenderableImage.h>
-#include <AK/effects/AKBackgroundBlurEffect.h>
+#include <Nodes/AKImage.h>
 
 class Surface;
 
-// TODO: Make this abstract and create one for each role
+using namespace CZ;
 
-class SurfaceView final : public AKRenderableImage
+class SurfaceView final : public AKImage
 {
 public:
     SurfaceView(Surface &surface) noexcept;
@@ -19,13 +17,12 @@ public:
     void syncOpaqueRegion() noexcept;
     void syncInvisibleRegion() noexcept;
     void syncInputRegion() noexcept;
-    void syncTexture() noexcept;
+    void syncImage() noexcept;
     void syncScale() noexcept;
     void syncTransform() noexcept;
     void syncSrcRect() noexcept;
     void syncVisibility() noexcept;
     Surface &surface;
-    AKBackgroundBlurEffect blur;
 };
 
 #endif // SURFACEVIEW_H

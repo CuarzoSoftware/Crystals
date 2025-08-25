@@ -1,19 +1,19 @@
 #ifndef SCENE_H
 #define SCENE_H
 
-#include <core/Global.h>
-#include <AK/AKScene.h>
-#include <AK/nodes/AKContainer.h>
+#include <Nodes/AKContainer.h>
+#include <AKScene.h>
 #include <LLayout.h>
 #include <array>
 
-class Scene final : public AKScene
+using namespace CZ;
+
+class Scene final : public CZObject
 {
 public:
 
     enum Layer
     {
-        // TODO: Add custom layers
         Background  = LLayerBackground,
         Bottom      = LLayerBottom,
         Middle      = LLayerMiddle,
@@ -22,9 +22,13 @@ public:
         LayerLast
     };
 
-    Scene() noexcept;
+    static std::shared_ptr<Scene> Make() noexcept { return std::shared_ptr<Scene>(new Scene()); }
+    std::shared_ptr<AKScene> scene;
     AKContainer root { YGFlexDirectionRow, false };
     std::array<AKContainer, LayerLast> layers;
+
+private:
+    Scene() noexcept;
 };
 
 #endif // SCENE_H

@@ -1,14 +1,19 @@
 #ifndef SURFACE_H
 #define SURFACE_H
 
-#include <core/Global.h>
+#include <Core/Types.h>
+#include <Core/Log.h>
+#include <Scene/SurfaceView.h>
 #include <LSurface.h>
-#include <ui/SurfaceView.h>
 
 class Surface final : public LSurface
 {
 public:
-    Surface(const void *params) noexcept : LSurface(params) {};
+    Surface(const void *params) noexcept : LSurface(params)
+    {
+        log = Log.newWithContext("Surface");
+        log(CZTrace, CZLN, "Surface created");
+    };
 
     void damageChanged() override;
     void opaqueRegionChanged() override;
@@ -21,7 +26,7 @@ public:
     void bufferScaleChanged() override;
     void bufferTransformChanged() override;
 
-    void roleChanged() override;
+    void roleChanged(LBaseSurfaceRole *prevRole) override;
     void parentChanged() override;
     void mappingChanged() override;
 
@@ -29,7 +34,7 @@ public:
     void layerChanged() override;
 
     SurfaceView view { *this };
-    bool needsTextureUpdate { true };
+    CZLogger log;
 };
 
 #endif // SURFACE_H

@@ -1,3 +1,4 @@
+/*
 #include <include/core/SkRegion.h>
 #include <effects/SurfaceBlurManager.h>
 #include <utils/Converter.h>
@@ -71,3 +72,4 @@ void SurfaceBlurManager::propsChanged(LBitset<PropChanges> changes, const Props 
             surface.view.removeBackgroundEffect(&surface.view.blur);
     }
 }
+*/

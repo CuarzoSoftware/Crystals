@@ -1,26 +1,23 @@
-#include <roles/Surface.h>
-#include <ui/Scene.h>
+#include <Roles/Surface.h>
+#include <Scene/Scene.h>
 
-void Surface::damageChanged()           { view.syncDamage(); needsTextureUpdate = true; }
+void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); }
 void Surface::opaqueRegionChanged()     { view.syncOpaqueRegion(); }
 void Surface::invisibleRegionChanged()  { view.syncInvisibleRegion(); }
 void Surface::inputRegionChanged()      { view.syncInputRegion(); }
 
-void Surface::bufferSizeChanged()       { needsTextureUpdate = true; }
+void Surface::bufferSizeChanged()       { view.syncImage(); }
 void Surface::sizeChanged()             { view.syncSize(); }
 void Surface::srcRectChanged()          { view.syncSrcRect(); }
 void Surface::bufferScaleChanged()      { view.syncScale(); }
 void Surface::bufferTransformChanged()  { view.syncTransform(); }
 
-void Surface::roleChanged()
+void Surface::roleChanged(LBaseSurfaceRole *prevRole)
 {
-
+    CZ_UNUSED(prevRole)
 }
 
-void Surface::parentChanged()
-{
-
-}
+void Surface::parentChanged() {}
 
 void Surface::mappingChanged()
 {
@@ -37,5 +34,5 @@ void Surface::orderChanged()
 
 void Surface::layerChanged()
 {
-    view.setParent(&G::scene()->layers[layer()]);
+    view.setParent(&GetScene()->layers[layer()]);
 }

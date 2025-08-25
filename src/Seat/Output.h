@@ -1,25 +1,25 @@
 #ifndef OUTPUT_H
 #define OUTPUT_H
 
-#include <core/Global.h>
 #include <LOutput.h>
-#include <AK/AKObject.h>
-#include <include/core/SkRegion.h>
+#include <CZObject.h>
+#include <AKTarget.h>
+#include <Core/Types.h>
+
+#include <Nodes/AKSolidColor.h>
 
 class Output final : public LOutput
 {
 public:
-    class Resources final : public AKObject
+    class Resources final : public CZObject
     {
     public:
         Resources(Output &output) noexcept;
-        ~Resources();
-        AKSceneTarget *sceneTarget;
         Output &output;
-
-        SkRegion inDamage;
-        SkRegion outDamage;
+        std::shared_ptr<AKTarget> target;
         bool ignoreKayRepaintCalls { false };
+
+        AKSolidColor testSolidColor { SK_ColorBLUE };
     };
 
     using LOutput::LOutput;
@@ -33,7 +33,6 @@ public:
     void syncSurfaceViews() noexcept;
     void handleSurfaceCallbacks() noexcept;
     void addCursorDamage() noexcept;
-    void handleOutDamage() noexcept;
 
     std::unique_ptr<Resources> res;
 };

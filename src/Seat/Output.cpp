@@ -1,28 +1,30 @@
-#include <AK/AKLog.h>
-#include <seat/Output.h>
-#include <core/Application.h>
-#include <utils/Converter.h>
-#include <roles/Surface.h>
+#include <Seat/Output.h>
+#include <Roles/Surface.h>
+#include <Scene/Scene.h>
+#include <RSurface.h>
 #include <LCursor.h>
 #include <LCompositor.h>
+#include <RPass.h>
 
 Output::Resources::Resources(Output &output) noexcept : output(output)
 {
-    sceneTarget = G::scene()->createTarget();
-    sceneTarget->setUserData(&output);
-    sceneTarget->setClearColor(SK_ColorBLACK);
+    auto *scene { GetScene() };
 
-    // Triggers repaint when AKNodes become dirty
-    sceneTarget->on.markedDirty.subscribe(this, [this](auto &){
+    testSolidColor.setParent(&scene->layers[LLayerOverlay]);
+    testSolidColor.layout().setPosition(YGEdgeLeft, 500.f);
+    testSolidColor.layout().setPosition(YGEdgeTop, 500.f);
+    testSolidColor.layout().setWidth(200.f);
+    testSolidColor.layout().setHeight(200.f);
+    testSolidColor.setOpacity(0.3f);
+
+    target = scene->scene->makeTarget();
+    target->setClearColor(SK_ColorGREEN);
+    target->userData = &output;
+
+    target->onMarkedDirty.subscribe(this, [this](auto &){
         if (!ignoreKayRepaintCalls)
             this->output.repaint();
     });
-}
-
-Output::Resources::~Resources()
-{
-    G::scene()->destroyTarget(sceneTarget);
-    G::app()->freeGLContextData();
 }
 
 void Output::initializeGL()
@@ -36,6 +38,21 @@ void Output::paintGL()
     syncSurfaceViews();
     res->ignoreKayRepaintCalls = false;
 
+    auto surface { RSurface::WrapImage(currentImage()) };
+    surface->setGeometry({
+        .viewport = SkRect::Make(rect()),
+        .dst = SkRect::Make(sizeB()),
+        .transform = transform()
+    });
+
+    auto target { res->target };
+    target->surface = surface;
+    target->age = imageAge();
+    target->setBakedNodesScale(scale());
+    target->outDamage = &damage;
+    GetScene()->scene->render(target);
+
+    /*
     const bool trackingDamage { hasBufferDamageSupport() || usingFractionalScale() };
     res->sceneTarget->outDamageRegion = trackingDamage ? &res->outDamage : nullptr;
     res->sceneTarget->setSurface(Converter::SkSurfaceFromOutput(this));
@@ -48,7 +65,7 @@ void Output::paintGL()
     G::scene()->render(res->sceneTarget);
 
     if (trackingDamage)
-        handleOutDamage();
+        handleOutDamage();*/
 
     handleSurfaceCallbacks();
 }
@@ -70,7 +87,7 @@ void Output::uninitializeGL()
 
 void Output::syncSurfaceViews() noexcept
 {
-    for (Surface *surface : G::surfaces())
+    for (Surface *surface : GetSurfaces())
     {
         surface->view.syncVisibility();
 
@@ -78,15 +95,14 @@ void Output::syncSurfaceViews() noexcept
             continue;
 
         surface->view.syncPos();
-        surface->view.syncTexture();
     }
 }
 
 void Output::handleSurfaceCallbacks() noexcept
 {
-    for (Surface *surface : G::surfaces())
+    for (Surface *surface : GetSurfaces())
     {
-        if (surface->view.renderedOnLastTarget())
+        if (surface->view.renderedOnLastTarget() || surface->cursorRole())
         {
             surface->view.clearRenderedOnLastTarget();
             surface->requestNextFrame();
@@ -100,7 +116,7 @@ void Output::handleSurfaceCallbacks() noexcept
 
             for (auto *target : surface->view.intersectedTargets())
             {
-                if (target->userData() == output)
+                if (target->userData == output)
                 {
                     outputFound = true;
                     break;
@@ -119,6 +135,7 @@ void Output::addCursorDamage() noexcept
 {
     /* When hw planes are not available */
 
+    /*
     const LRegion &cursorDamage { cursor()->damage(this) };
 
     if (cursorDamage.empty())
@@ -127,18 +144,6 @@ void Output::addCursorDamage() noexcept
     {
         Converter::LtSRegion(cursorDamage, &res->inDamage);
         res->sceneTarget->inDamageRegion = &res->inDamage;
-    }
+    }*/
 }
 
-void Output::handleOutDamage() noexcept
-{
-    if (hasBufferDamageSupport() || usingFractionalScale())
-    {
-        if (!usingFractionalScale())
-            res->outDamage.translate(pos().x(), pos().y());
-
-        LRegion damage;
-        Converter::StLRegion(res->outDamage, &damage);
-        setBufferDamage(&damage);
-    }
-}

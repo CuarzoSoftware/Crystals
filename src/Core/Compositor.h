@@ -1,19 +1,22 @@
 #ifndef COMPOSITOR_H
 #define COMPOSITOR_H
 
+#include <Core/Types.h>
 #include <LCompositor.h>
-#include <core/Global.h>
+#include <AKApp.h>
+
+using namespace CZ;
 
 class Compositor final : public LCompositor
 {
 public:
     Compositor() noexcept;
-    ~Compositor();
-    std::unique_ptr<Application> app;
+    std::shared_ptr<AKApp> app;
+    std::shared_ptr<Scene> scene;
 
 private:
-    void initialized() override;
-    void uninitialized() override;
+    void initialized() noexcept override;
+    void uninitialized() noexcept override;
     bool createGlobalsRequest() override;
     LFactoryObject *createObjectRequest(LFactoryObject::Type objectType, const void *params) override;
 };

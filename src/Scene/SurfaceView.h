@@ -2,12 +2,13 @@
 #define SURFACEVIEW_H
 
 #include <Nodes/AKImage.h>
+#include <Nodes/AKContainer.h>
 
 class Surface;
 
 using namespace CZ;
 
-class SurfaceView final : public AKImage
+class SurfaceView final : public AKContainer
 {
 public:
     SurfaceView(Surface &surface) noexcept;
@@ -23,6 +24,21 @@ public:
     void syncSrcRect() noexcept;
     void syncVisibility() noexcept;
     Surface &surface;
+
+    // Subsurfaces below
+    AKContainer below { YGFlexDirectionColumn, false, this };
+
+    // This surface view
+    AKImage view { this };
+
+    // Subsurfaces above
+    AKContainer above { YGFlexDirectionColumn, false, this };
+
+    // Child popups
+    AKContainer popups { YGFlexDirectionColumn, false, this };
+
+    // Child toplevels
+    AKContainer toplevels { YGFlexDirectionColumn, false, this };
 };
 
 #endif // SURFACEVIEW_H

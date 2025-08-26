@@ -5,10 +5,12 @@
 #include <Core/Compositor.h>
 #include <Core/Log.h>
 #include <Scene/Scene.h>
+
 #include <Roles/Surface.h>
+#include <Roles/SubsurfaceRole.h>
+
 #include <Seat/Output.h>
 #include <Effects/SurfaceBlurManager.h>
-#include <sys/poll.h>
 
 Compositor::Compositor() noexcept
 {
@@ -43,6 +45,8 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
         return new Output(params);
     case LFactoryObject::Type::LSurface:
         return new Surface(params);
+    case LFactoryObject::Type::LSubsurfaceRole:
+        return new SubsurfaceRole(params);
     //case LFactoryObject::Type::LBackgroundBlur:
     //    return new SurfaceBlurManager(params);
     default:

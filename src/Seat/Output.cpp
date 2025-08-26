@@ -1,3 +1,4 @@
+#include "AKApp.h"
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
@@ -10,6 +11,7 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
 
+    /*
     testSolidColor.setParent(&scene->layers[LLayerOverlay]);
     testSolidColor.layout().setPosition(YGEdgeLeft, 500.f);
     testSolidColor.layout().setPosition(YGEdgeTop, 500.f);
@@ -17,8 +19,18 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
     testSolidColor.layout().setHeight(200.f);
     testSolidColor.setOpacity(0.3f);
 
+    testText.setParent(&scene->layers[LLayerOverlay]);
+    testText.layout().setPosition(YGEdgeLeft, 100.f);
+    testText.layout().setPosition(YGEdgeTop, 100.f);
+    testText.enableReplaceImageColor(true);
+    testText.setColor(SK_ColorMAGENTA);
+    auto style { testText.textStyle() };
+    style.setFontSize(64.f);
+    style.setFontFamilies({SkString("Playwrite MX Guides")});
+    testText.setTextStyle(style);*/
+
     target = scene->scene->makeTarget();
-    target->setClearColor(SK_ColorGREEN);
+    target->setClearColor(SK_ColorWHITE);
     target->userData = &output;
 
     target->onMarkedDirty.subscribe(this, [this](auto &){
@@ -102,9 +114,9 @@ void Output::handleSurfaceCallbacks() noexcept
 {
     for (Surface *surface : GetSurfaces())
     {
-        if (surface->view.renderedOnLastTarget() || surface->cursorRole())
+        if (surface->view.view.renderedOnLastTarget() || surface->cursorRole())
         {
-            surface->view.clearRenderedOnLastTarget();
+            surface->view.view.clearRenderedOnLastTarget();
             surface->requestNextFrame();
         }
 

@@ -6,10 +6,22 @@
 
 using namespace CZ;
 
+/* Core */
+
 class Compositor;
-class Surface;
-class Scene;
+
+/* Seat */
+
 class Output;
+
+/* Roles */
+
+class Surface;
+class SubsurfaceRole;
+
+/* Scene */
+
+class Scene;
 class SurfaceView;
 
 /* Global handles */

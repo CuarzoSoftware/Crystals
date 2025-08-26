@@ -3,16 +3,26 @@
 #include <Roles/Surface.h>
 
 SurfaceView::SurfaceView(Surface &surface) noexcept :
-    AKImage(&GetScene()->layers[LLayerMiddle]),
+    AKContainer(YGFlexDirectionColumn, false, &GetScene()->layers[LLayerMiddle]),
     surface(surface)
 {
-    enableAutoDamage(false);
-    setSrcRectMode(SrcRectMode::Custom);
     layout().setPositionType(YGPositionTypeAbsolute);
+    above.layout().setPositionType(YGPositionTypeAbsolute);
+    below.layout().setPositionType(YGPositionTypeAbsolute);
+    popups.layout().setPositionType(YGPositionTypeAbsolute);
+    toplevels.layout().setPositionType(YGPositionTypeAbsolute);
+    view.layout().setPositionType(YGPositionTypeAbsolute);
+    view.enableAutoDamage(false);
+    view.setSrcRectMode(AKImage::SrcRectMode::Custom);
+    view.layout().setWidthPercent(100.f);
+    view.layout().setHeightPercent(100.f);
 }
 
 void SurfaceView::syncPos() noexcept
 {
+    if (surface.subsurface())
+        return;
+
     const auto &rolePos { surface.rolePos() };
     layout().setPosition(YGEdgeLeft, rolePos.x());
     layout().setPosition(YGEdgeTop, rolePos.y());
@@ -26,17 +36,17 @@ void SurfaceView::syncSize() noexcept
 
 void SurfaceView::syncDamage() noexcept
 {
-    addDamage(surface.damage());
+    view.addDamage(surface.damage());
 }
 
 void SurfaceView::syncOpaqueRegion() noexcept
 {
-    opaqueRegion.set(surface.opaqueRegion());
+    view.opaqueRegion.set(surface.opaqueRegion());
 }
 
 void SurfaceView::syncInvisibleRegion() noexcept
 {
-    invisibleRegion.set(surface.invisibleRegion());
+    view.invisibleRegion.set(surface.invisibleRegion());
 }
 
 void SurfaceView::syncInputRegion() noexcept
@@ -46,22 +56,22 @@ void SurfaceView::syncInputRegion() noexcept
 
 void SurfaceView::syncImage() noexcept
 {
-    setImage(surface.image());
+    view.setImage(surface.image());
 }
 
 void SurfaceView::syncScale() noexcept
 {
-    setCustomSrcRectScale(surface.bufferScale());
+    view.setCustomSrcRectScale(surface.bufferScale());
 }
 
 void SurfaceView::syncTransform() noexcept
 {
-    setSrcTransform(surface.bufferTransform());
+    view.setSrcTransform(surface.bufferTransform());
 }
 
 void SurfaceView::syncSrcRect() noexcept
 {
-    setCustomSrcRect(surface.srcRect());
+    view.setCustomSrcRect(surface.srcRect());
 }
 
 void SurfaceView::syncVisibility() noexcept

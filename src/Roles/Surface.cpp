@@ -15,6 +15,9 @@ void Surface::bufferTransformChanged()  { view.syncTransform(); }
 void Surface::roleChanged(LBaseSurfaceRole *prevRole)
 {
     CZ_UNUSED(prevRole)
+
+    if (cursorRole())
+        view.setParent(nullptr);
 }
 
 void Surface::parentChanged() {}
@@ -26,6 +29,8 @@ void Surface::mappingChanged()
 
 void Surface::orderChanged()
 {
+    return;
+
     if (prevSurface() && prevSurface()->layer() == layer())
         view.insertAfter(&static_cast<Surface*>(prevSurface())->view);
     else if (nextSurface() && nextSurface()->layer() == layer())
@@ -34,5 +39,6 @@ void Surface::orderChanged()
 
 void Surface::layerChanged()
 {
+    return;
     view.setParent(&GetScene()->layers[layer()]);
 }

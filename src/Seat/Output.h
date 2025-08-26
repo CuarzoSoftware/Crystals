@@ -5,8 +5,9 @@
 #include <CZObject.h>
 #include <AKTarget.h>
 #include <Core/Types.h>
-
+#include <Scene/Scene.h>
 #include <Nodes/AKSolidColor.h>
+#include <Nodes/AKText.h>
 
 class Output final : public LOutput
 {
@@ -16,10 +17,13 @@ public:
     public:
         Resources(Output &output) noexcept;
         Output &output;
+        //std::array<AKContainer, Scene::LayerLast> layers;
+
         std::shared_ptr<AKTarget> target;
         bool ignoreKayRepaintCalls { false };
 
-        AKSolidColor testSolidColor { SK_ColorBLUE };
+        //AKSolidColor testSolidColor { SK_ColorBLUE };
+        //AKText testText { "Crystals" };
     };
 
     using LOutput::LOutput;

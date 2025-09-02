@@ -10,6 +10,7 @@ project(
 )
 
 wayland_server_dep  = dependency('wayland-server')
+libinput_dep        = dependency('libinput')
 cz_louvre_dep       = dependency('cz-louvre')
 cz_core_dep         = dependency('cz-core')
 cz_skia_dep         = dependency('cz-skia')
@@ -22,6 +23,7 @@ executable(
     include_directories: ['./src'],
     dependencies : [
         wayland_server_dep,
+        libinput_dep,
         cz_louvre_dep,
         cz_core_dep,
         cz_skia_dep,

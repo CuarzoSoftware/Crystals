@@ -2,9 +2,9 @@
 #define OUTPUT_H
 
 #include <LOutput.h>
-#include <CZObject.h>
 #include <AKTarget.h>
 #include <Core/Types.h>
+#include <Core/CZObject.h>
 #include <Scene/Scene.h>
 #include <Nodes/AKSolidColor.h>
 #include <Nodes/AKText.h>

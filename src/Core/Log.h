@@ -1,7 +1,7 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include <CZ/CZLogger.h>
+#include <CZ/Core/CZLogger.h>
 
 #define Log LogGet()
 

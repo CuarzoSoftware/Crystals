@@ -1,12 +1,7 @@
 #include <Roles/SubsurfaceRole.h>
 #include <Roles/Surface.h>
 
-SubsurfaceRole::SubsurfaceRole(const void *params) noexcept : LSubsurfaceRole(params)
-{
-    auto *surf { static_cast<Surface*>(surface()) };
-    auto *pare { static_cast<Surface*>(surf->parent()) };
-    surf->view.setParent(&pare->view.above);
-}
+SubsurfaceRole::SubsurfaceRole(const void *params) noexcept : LSubsurfaceRole(params) {}
 
 void SubsurfaceRole::localPosChanged() noexcept
 {

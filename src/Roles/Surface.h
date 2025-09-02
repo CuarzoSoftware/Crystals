@@ -26,12 +26,12 @@ public:
     void bufferScaleChanged() override;
     void bufferTransformChanged() override;
 
-    void roleChanged(LBaseSurfaceRole *prevRole) override;
-    void parentChanged() override;
+    void roleChanged() noexcept override;
+    void parentChanged() noexcept override;
     void mappingChanged() override;
 
-    void orderChanged() override;
-    void layerChanged() override;
+    void raised() noexcept override;
+    void layerChanged() noexcept override;
 
     SurfaceView view { *this };
     CZLogger log;

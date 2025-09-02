@@ -12,33 +12,68 @@ void Surface::srcRectChanged()          { view.syncSrcRect(); }
 void Surface::bufferScaleChanged()      { view.syncScale(); }
 void Surface::bufferTransformChanged()  { view.syncTransform(); }
 
-void Surface::roleChanged(LBaseSurfaceRole *prevRole)
+void Surface::roleChanged() noexcept
 {
-    CZ_UNUSED(prevRole)
-
     if (cursorRole())
         view.setParent(nullptr);
 }
 
-void Surface::parentChanged() {}
+void Surface::parentChanged() noexcept
+{
+    if (parent())
+    {
+        Surface *p { static_cast<Surface*>(parent()) };
+        switch (roleId())
+        {
+        case Role::Toplevel:
+            view.setParent(&p->view.toplevels);
+            break;
+        case Role::Popup:
+            view.setParent(&p->view.popups);
+            break;
+        case Role::Subsurface:
+            view.setParent(&p->view.above);
+            break;
+        default:
+            break;
+        }
+    }
+    else
+    {
+        switch (roleId())
+        {
+        case Role::Toplevel:
+            view.setParent(&GetScene()->layers[layer()]);
+            break;
+        case Role::Popup:
+            view.setParent(nullptr);
+            break;
+        case Role::Subsurface:
+            view.setParent(nullptr);
+            break;
+        default:
+            break;
+        }
+    }
+}
 
 void Surface::mappingChanged()
 {
     LSurface::mappingChanged();
 }
 
-void Surface::orderChanged()
+void Surface::raised() noexcept
 {
-    return;
+    if (parent())
+        return;
 
-    if (prevSurface() && prevSurface()->layer() == layer())
-        view.insertAfter(&static_cast<Surface*>(prevSurface())->view);
-    else if (nextSurface() && nextSurface()->layer() == layer())
-        view.insertBefore(&static_cast<Surface*>(nextSurface())->view);
+    view.setParent(&GetScene()->layers[layer()]);
 }
 
-void Surface::layerChanged()
+void Surface::layerChanged() noexcept
 {
-    return;
+    if (parent())
+        return;
+
     view.setParent(&GetScene()->layers[layer()]);
 }

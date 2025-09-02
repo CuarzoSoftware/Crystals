@@ -9,7 +9,10 @@
 #include <Roles/Surface.h>
 #include <Roles/SubsurfaceRole.h>
 
+#include <Seat/Seat.h>
 #include <Seat/Output.h>
+#include <Seat/Pointer.h>
+
 #include <Effects/SurfaceBlurManager.h>
 
 Compositor::Compositor() noexcept
@@ -21,8 +24,9 @@ void Compositor::initialized() noexcept
 {
     app = AKApp::Make();
     scene = Scene::Make();
-    Log(CZInfo, CZLN, "Compositor initialized");
+    GetSeat()->configureInputDevices();
     LCompositor::initialized();
+    Log(CZInfo, CZLN, "Compositor initialized");
 }
 
 void Compositor::uninitialized() noexcept {}
@@ -41,12 +45,16 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
 {
     switch (objectType)
     {
-    case LFactoryObject::Type::LOutput:
-        return new Output(params);
     case LFactoryObject::Type::LSurface:
         return new Surface(params);
     case LFactoryObject::Type::LSubsurfaceRole:
         return new SubsurfaceRole(params);
+    case LFactoryObject::Type::LOutput:
+        return new Output(params);
+    case LFactoryObject::Type::LSeat:
+        return new Seat(params);
+    case LFactoryObject::Type::LPointer:
+        return new Pointer(params);
     //case LFactoryObject::Type::LBackgroundBlur:
     //    return new SurfaceBlurManager(params);
     default:

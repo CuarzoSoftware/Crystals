@@ -57,6 +57,11 @@ void Output::paintGL()
         .transform = transform()
     });
 
+    /*
+    auto pass { surface->beginPass() };
+    pass->getPainter()->clear();
+    pass.reset();*/
+
     auto target { res->target };
     target->surface = surface;
     target->age = imageAge();

@@ -9,8 +9,13 @@ SurfaceView::SurfaceView(Surface &surface) noexcept :
     layout().setPositionType(YGPositionTypeAbsolute);
     above.layout().setPositionType(YGPositionTypeAbsolute);
     below.layout().setPositionType(YGPositionTypeAbsolute);
+
+    // Detach pos from parent and use Louvre's world pos
     popups.layout().setPositionType(YGPositionTypeAbsolute);
+    popups.layout().setAnchorNode(&GetScene()->root);
     toplevels.layout().setPositionType(YGPositionTypeAbsolute);
+    toplevels.layout().setAnchorNode(&GetScene()->root);
+
     view.layout().setPositionType(YGPositionTypeAbsolute);
     view.enableAutoDamage(false);
     view.setSrcRectMode(AKImage::SrcRectMode::Custom);
@@ -61,7 +66,7 @@ void SurfaceView::syncImage() noexcept
 
 void SurfaceView::syncScale() noexcept
 {
-    view.setCustomSrcRectScale(surface.bufferScale());
+    view.setCustomSrcRectScale(surface.scale());
 }
 
 void SurfaceView::syncTransform() noexcept
@@ -78,6 +83,5 @@ void SurfaceView::syncVisibility() noexcept
 {
     setVisible(
         surface.mapped() &&
-        !surface.minimized() &&
         !surface.cursorRole());
 }

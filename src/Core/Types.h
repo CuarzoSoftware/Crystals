@@ -12,6 +12,8 @@ class Compositor;
 
 /* Seat */
 
+class Seat;
+class Pointer;
 class Output;
 
 /* Roles */
@@ -28,6 +30,7 @@ class SurfaceView;
 
 Compositor *GetCompositor() noexcept;
 Scene *GetScene() noexcept;
+Seat *GetSeat() noexcept;
 const std::list<Surface*> &GetSurfaces() noexcept;
 
 #endif // TYPES_H

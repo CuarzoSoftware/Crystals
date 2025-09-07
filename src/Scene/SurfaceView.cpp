@@ -6,6 +6,7 @@ SurfaceView::SurfaceView(Surface &surface) noexcept :
     AKContainer(YGFlexDirectionColumn, false, &GetScene()->layers[LLayerMiddle]),
     surface(surface)
 {
+    setVisible(false);
     layout().setPositionType(YGPositionTypeAbsolute);
     above.layout().setPositionType(YGPositionTypeAbsolute);
     below.layout().setPositionType(YGPositionTypeAbsolute);
@@ -16,7 +17,7 @@ SurfaceView::SurfaceView(Surface &surface) noexcept :
     toplevels.layout().setPositionType(YGPositionTypeAbsolute);
     toplevels.layout().setAnchorNode(&GetScene()->root);
 
-    view.layout().setPositionType(YGPositionTypeAbsolute);
+    view.layout().setPositionType(YGPositionTypeRelative);
     view.enableAutoDamage(false);
     view.setSrcRectMode(AKImage::SrcRectMode::Custom);
     view.layout().setWidthPercent(100.f);

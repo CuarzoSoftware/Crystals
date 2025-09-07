@@ -8,6 +8,18 @@
 #include <Scene/Scene.h>
 #include <Nodes/AKSolidColor.h>
 #include <Nodes/AKText.h>
+#include <Effects/AKBackgroundBlurEffect.h>
+
+class blur : public AKBackgroundBlurEffect
+{
+public:
+    using AKBackgroundBlurEffect::AKBackgroundBlurEffect;
+
+    void onSceneCalculatedRect() override {
+        AKBackgroundBlurEffect::onSceneCalculatedRect();
+    }
+};
+
 
 class Output final : public LOutput
 {
@@ -24,6 +36,9 @@ public:
 
         //AKSolidColor testSolidColor { SK_ColorBLUE };
         //AKText testText { "Crystals" };
+
+        AKContainer testBlurContainer {};
+        blur blurFX { &testBlurContainer };
     };
 
     using LOutput::LOutput;

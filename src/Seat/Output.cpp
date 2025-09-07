@@ -11,6 +11,20 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
 
+    testBlurContainer.setParent(&scene->layers[LLayerTop]);
+    testBlurContainer.layout().setPosition(YGEdgeLeft, 400);
+    testBlurContainer.layout().setPosition(YGEdgeTop, 400);
+    testBlurContainer.layout().setWidth(800);
+    testBlurContainer.layout().setHeight(800);
+
+    blurFX.setRoundRectClip(
+        AKRRect(SkIRect::MakeWH(800, 800),
+                100, 10, 0, 30));
+
+    /*SkPath p;
+    p.addCircle(200, 200, 200);
+    blurFX.setPathClip(p);*/
+
     /*
     testSolidColor.setParent(&scene->layers[LLayerOverlay]);
     testSolidColor.layout().setPosition(YGEdgeLeft, 500.f);
@@ -42,23 +56,29 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
+    //setScale(2.25f);
+    //enableFractionalOversampling(false);
 }
 
 void Output::paintGL()
 {
     res->ignoreKayRepaintCalls = true;
     syncSurfaceViews();
+
+    res->testBlurContainer.layout().setPosition(YGEdgeLeft, cursor()->pos().x());
+    res->testBlurContainer.layout().setPosition(YGEdgeTop, cursor()->pos().y());
+
     res->ignoreKayRepaintCalls = false;
 
     auto surface { RSurface::WrapImage(currentImage()) };
     surface->setGeometry({
         .viewport = SkRect::Make(rect()),
-        .dst = SkRect::Make(sizeB()),
+        .dst = SkRect::Make(realBufferSize()),
         .transform = transform()
     });
 
-    /*
-    auto pass { surface->beginPass() };
+
+    /*auto pass { surface->beginPass() };
     pass->getPainter()->clear();
     pass.reset();*/
 

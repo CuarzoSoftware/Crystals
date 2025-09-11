@@ -18,6 +18,7 @@ private:
     void initialized() noexcept override;
     void uninitialized() noexcept override;
     bool createGlobalsRequest() override;
+    void initCursor() noexcept;
     LFactoryObject *createObjectRequest(LFactoryObject::Type objectType, const void *params) override;
 };
 

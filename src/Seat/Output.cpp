@@ -56,8 +56,8 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
-    //setScale(2.25f);
-    //enableFractionalOversampling(false);
+    setScale(1.5f);
+    enableFractionalOversampling(false);
 }
 
 void Output::paintGL()

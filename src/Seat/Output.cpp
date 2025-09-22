@@ -11,6 +11,10 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
 
+    button.setParent(&scene->layers[LLayerOverlay]);
+    windowBtns.setParent(&scene->layers[LLayerOverlay]);
+
+    /*
     testBlurContainer.setParent(&scene->layers[LLayerTop]);
     testBlurContainer.layout().setPosition(YGEdgeLeft, 400);
     testBlurContainer.layout().setPosition(YGEdgeTop, 400);
@@ -21,7 +25,7 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
         AKRRect(SkIRect::MakeWH(800, 800),
                 100, 10, 0, 30));
 
-    /*SkPath p;
+    SkPath p;
     p.addCircle(200, 200, 200);
     blurFX.setPathClip(p);*/
 
@@ -56,8 +60,8 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
-    setScale(1.5f);
-    enableFractionalOversampling(false);
+    //setScale(1.5f);
+    //enableFractionalOversampling(false);
 }
 
 void Output::paintGL()

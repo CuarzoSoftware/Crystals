@@ -8,6 +8,8 @@
 #include <Scene/Scene.h>
 #include <Nodes/AKSolidColor.h>
 #include <Nodes/AKText.h>
+#include <Nodes/AKButton.h>
+#include <Nodes/AKWindowButtonGroup.h>
 #include <Effects/AKBackgroundBlurEffect.h>
 
 class blur : public AKBackgroundBlurEffect
@@ -39,6 +41,9 @@ public:
 
         AKContainer testBlurContainer {};
         blur blurFX { &testBlurContainer };
+
+        AKButton button { "Hello world!" };
+        AKWindowButtonGroup windowBtns { nullptr };
     };
 
     using LOutput::LOutput;

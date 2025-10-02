@@ -10,6 +10,7 @@
 #include <Nodes/AKText.h>
 #include <Nodes/AKButton.h>
 #include <Nodes/AKWindowButtonGroup.h>
+#include <Nodes/AKTextField.h>
 #include <Effects/AKBackgroundBlurEffect.h>
 
 class blur : public AKBackgroundBlurEffect
@@ -38,6 +39,8 @@ public:
 
         //AKSolidColor testSolidColor { SK_ColorBLUE };
         //AKText testText { "Crystals" };
+
+        AKTextField field {};
 
         AKContainer testBlurContainer {};
         blur blurFX { &testBlurContainer };

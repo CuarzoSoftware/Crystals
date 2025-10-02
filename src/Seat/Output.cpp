@@ -11,8 +11,15 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
 
+    scene->layers[LLayerOverlay].enableChildrenClipping(false);
     button.setParent(&scene->layers[LLayerOverlay]);
+    button.layout().setPosition(YGEdgeLeft, 300.f);
+    button.layout().setPosition(YGEdgeTop, 100.f);
+    button.layout().setPositionType(YGPositionTypeAbsolute);
+
     windowBtns.setParent(&scene->layers[LLayerOverlay]);
+
+    field.setParent(&scene->layers[LLayerOverlay]);
 
     /*
     testBlurContainer.setParent(&scene->layers[LLayerTop]);

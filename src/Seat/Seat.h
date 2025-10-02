@@ -14,6 +14,7 @@ public:
     void configureInputDevices() noexcept;
     void enabledChanged() override;
     void inputDevicePluggedEvent(const CZInputDevicePluggedEvent &e) override;
+    void inputEvent(const CZInputEvent &e) noexcept override;
     CZLogger log;
 };
 

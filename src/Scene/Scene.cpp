@@ -1,4 +1,7 @@
+#include <Events/CZKeyboardEnterEvent.h>
+#include <Events/CZPointerEnterEvent.h>
 #include <Scene/Scene.h>
+#include <Core/CZCore.h>
 
 Scene::Scene() noexcept
 {
@@ -7,4 +10,8 @@ Scene::Scene() noexcept
 
     for (auto &layer : layers)
         layer.setParent(&root);
+
+    auto core { CZCore::Get() };
+    core->sendEvent(CZPointerEnterEvent(), *scene);
+    core->sendEvent(CZKeyboardEnterEvent(), *scene);
 }

@@ -1,3 +1,5 @@
+#include "Core/CZCore.h"
+#include "Scene/Scene.h"
 #include <Seat/Seat.h>
 #include <Core/CZInputDevice.h>
 #include <Core/Compositor.h>
@@ -38,7 +40,7 @@ void Seat::configureLibinputDevice(libinput_device *dev) noexcept
 
 void Seat::configureInputDevices() noexcept
 {
-    for (auto dev : inputDevices())
+    for (auto &dev : inputDevices())
         configureLibinputDevice(dev->nativeHandle.libinput);
 }
 
@@ -53,4 +55,9 @@ void Seat::enabledChanged()
 void Seat::inputDevicePluggedEvent(const CZInputDevicePluggedEvent &e)
 {
     configureLibinputDevice(e.device->nativeHandle.libinput);
+}
+
+void Seat::inputEvent(const CZInputEvent &e) noexcept
+{
+    LSeat::inputEvent(e);
 }

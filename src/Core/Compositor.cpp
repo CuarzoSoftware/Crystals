@@ -13,6 +13,7 @@
 #include <Seat/Seat.h>
 #include <Seat/Output.h>
 #include <Seat/Pointer.h>
+#include <Seat/Keyboard.h>
 
 #include <Effects/SurfaceBlurManager.h>
 
@@ -26,7 +27,7 @@ Compositor::Compositor() noexcept
 
 void Compositor::initialized() noexcept
 {
-    app = AKApp::Make();
+    app = AKApp::GetOrMake();
     scene = Scene::Make();
     GetSeat()->configureInputDevices();
     initCursor();
@@ -123,6 +124,8 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
         return new Seat(params);
     case LFactoryObject::Type::LPointer:
         return new Pointer(params);
+    case LFactoryObject::Type::LKeyboard:
+        return new Keyboard(params);
     //case LFactoryObject::Type::LBackgroundBlur:
     //    return new SurfaceBlurManager(params);
     default:

@@ -10,6 +10,7 @@ class Seat final : public LSeat
 {
 public:
     Seat(const void *params) noexcept;
+    void activeToplevelChanged(LToplevelRole *prev) noexcept;
     void configureLibinputDevice(libinput_device *dev) noexcept;
     void configureInputDevices() noexcept;
     void enabledChanged() override;

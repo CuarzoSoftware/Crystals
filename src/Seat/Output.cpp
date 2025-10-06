@@ -1,4 +1,3 @@
-#include "AKApp.h"
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
@@ -10,49 +9,7 @@
 Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
-
     scene->layers[LLayerOverlay].enableChildrenClipping(false);
-    button.setParent(&scene->layers[LLayerOverlay]);
-    button.layout().setPosition(YGEdgeLeft, 300.f);
-    button.layout().setPosition(YGEdgeTop, 100.f);
-    button.layout().setPositionType(YGPositionTypeAbsolute);
-
-    windowBtns.setParent(&scene->layers[LLayerOverlay]);
-
-    field.setParent(&scene->layers[LLayerOverlay]);
-
-    /*
-    testBlurContainer.setParent(&scene->layers[LLayerTop]);
-    testBlurContainer.layout().setPosition(YGEdgeLeft, 400);
-    testBlurContainer.layout().setPosition(YGEdgeTop, 400);
-    testBlurContainer.layout().setWidth(800);
-    testBlurContainer.layout().setHeight(800);
-
-    blurFX.setRoundRectClip(
-        AKRRect(SkIRect::MakeWH(800, 800),
-                100, 10, 0, 30));
-
-    SkPath p;
-    p.addCircle(200, 200, 200);
-    blurFX.setPathClip(p);*/
-
-    /*
-    testSolidColor.setParent(&scene->layers[LLayerOverlay]);
-    testSolidColor.layout().setPosition(YGEdgeLeft, 500.f);
-    testSolidColor.layout().setPosition(YGEdgeTop, 500.f);
-    testSolidColor.layout().setWidth(200.f);
-    testSolidColor.layout().setHeight(200.f);
-    testSolidColor.setOpacity(0.3f);
-
-    testText.setParent(&scene->layers[LLayerOverlay]);
-    testText.layout().setPosition(YGEdgeLeft, 100.f);
-    testText.layout().setPosition(YGEdgeTop, 100.f);
-    testText.enableReplaceImageColor(true);
-    testText.setColor(SK_ColorMAGENTA);
-    auto style { testText.textStyle() };
-    style.setFontSize(64.f);
-    style.setFontFamilies({SkString("Playwrite MX Guides")});
-    testText.setTextStyle(style);*/
 
     target = scene->scene->makeTarget();
     target->setClearColor(SK_ColorWHITE);
@@ -75,10 +32,6 @@ void Output::paintGL()
 {
     res->ignoreKayRepaintCalls = true;
     syncSurfaceViews();
-
-    res->testBlurContainer.layout().setPosition(YGEdgeLeft, cursor()->pos().x());
-    res->testBlurContainer.layout().setPosition(YGEdgeTop, cursor()->pos().y());
-
     res->ignoreKayRepaintCalls = false;
 
     auto surface { RSurface::WrapImage(currentImage()) };
@@ -88,32 +41,12 @@ void Output::paintGL()
         .transform = transform()
     });
 
-
-    /*auto pass { surface->beginPass() };
-    pass->getPainter()->clear();
-    pass.reset();*/
-
     auto target { res->target };
     target->surface = surface;
     target->age = imageAge();
     target->setBakedNodesScale(scale());
     target->outDamage = &damage;
     GetScene()->scene->render(target);
-
-    /*
-    const bool trackingDamage { hasBufferDamageSupport() || usingFractionalScale() };
-    res->sceneTarget->outDamageRegion = trackingDamage ? &res->outDamage : nullptr;
-    res->sceneTarget->setSurface(Converter::SkSurfaceFromOutput(this));
-    res->sceneTarget->setAge(currentBufferAge());
-    res->sceneTarget->setBakedComponentsScale(scale());
-    res->sceneTarget->setTransform(static_cast<AKTransform>(transform()));
-    res->sceneTarget->setViewport(SkRect::MakeXYWH(pos().x(), pos().y(), size().w(), size().h()));
-    res->sceneTarget->setDstRect(SkIRect::MakeXYWH(0, 0, realBufferSize().w(), realBufferSize().h()));
-    addCursorDamage();
-    G::scene()->render(res->sceneTarget);
-
-    if (trackingDamage)
-        handleOutDamage();*/
 
     handleSurfaceCallbacks();
 }

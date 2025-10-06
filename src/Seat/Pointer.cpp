@@ -16,15 +16,22 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
     e.pos = cursor()->pos();
     kay->core()->sendEvent(e, *kay);
 
+    // Keep the client surface cursor
     if (focus())
         return;
 
+    // Otherwise use the focused node cursor
     if (auto *node = scene->pointerFocus())
     {
-        auto shapeSource { cursor()->source()->asShape() };
+        if (node->cursor())
+        {
+            auto shapeSource { cursor()->source()->asShape() };
 
-        if (!shapeSource || shapeSource->shape() != node->cursor())
-            cursor()->setSource(LShapeCursorSource::MakeShape(node->cursor()));
+            if (!shapeSource || shapeSource->shape() != node->cursor())
+                cursor()->setSource(LShapeCursorSource::MakeShape(*node->cursor()));
+        }
+        else
+            cursor()->setVisible(false);
     }
 }
 

@@ -1,9 +1,6 @@
-/*
-#include <include/core/SkRegion.h>
-#include <effects/SurfaceBlurManager.h>
-#include <utils/Converter.h>
-#include <roles/Surface.h>
-#include <include/utils/SkParsePath.h>
+#include <CZ/skia/core/SkRegion.h>
+#include <Effects/SurfaceBlurManager.h>
+#include <Roles/Surface.h>
 #include <LClient.h>
 
 SurfaceBlurManager::SurfaceBlurManager(const void *params) noexcept : LBackgroundBlur(params) {}
@@ -14,62 +11,47 @@ void SurfaceBlurManager::configureRequest()
     configureState(State::Enabled);
 }
 
-void SurfaceBlurManager::propsChanged(LBitset<PropChanges> changes, const Props &)
+void SurfaceBlurManager::propsChanged(CZBitset<PropChanges> changes, const Props &)
 {
     auto &surface { *static_cast<Surface*>(this->surface()) };
 
-    if (changes.check(PropChanges::ColorHintChanged))
+    if (changes.has(PropChanges::ColorHintChanged))
     {
         // TODO: Implement dark blur in Kay
     }
 
-    if (changes.check(PropChanges::RegionChanged))
+    if (changes.has(PropChanges::RegionChanged))
     {
-        SkRegion region;
-        Converter::LtSRegion(this->region(), &region);
-        surface.view.blur.setRegion(region);
+        fx.setRegion(props().region);
     }
 
-    if (changes.check(PropChanges::MaskChanged))
+    if (changes.has(PropChanges::MaskChanged))
     {
-        switch (maskType())
+        switch (props().maskType)
         {
         case MaskType::NoMask:
-            surface.view.blur.clearClip();
+            fx.clearClip();
             break;
         case MaskType::RoundRect:
         {
-            AKRRect rRect;
-            Converter::LtARRect(roundRectMask(), &rRect);
-            surface.view.blur.setRoundRectClip(rRect);
+            fx.setRoundRectClip(props().roundRectMask);
             break;
         }
         case MaskType::SVGPath:
         {
-            if (svgPathMask().empty())
-                surface.view.blur.clearClip();
+            if (props().svgPathMask.isEmpty())
+                fx.clearClip();
             else
-            {
-                SkPath path;
-                if (SkParsePath::FromSVGString(svgPathMask().c_str(), &path))
-                    surface.view.blur.setPathClip(path);
-                else
-                {
-                    // Louvre does not validate if the SVG string is valid
-                    surface.client()->destroyLater();
-                    return;
-                }
-            }
+                fx.setPathClip(props().svgPathMask);
         }
         }
     }
 
-    if (changes.check(PropChanges::StateChanged))
+    if (changes.has(PropChanges::StateChanged))
     {
-        if (state() == Enabled)
-            surface.view.addBackgroundEffect(&surface.view.blur);
+        if (props().state == Enabled)
+            surface.view.view.addBackgroundEffect(&fx);
         else
-            surface.view.removeBackgroundEffect(&surface.view.blur);
+            surface.view.view.removeBackgroundEffect(&fx);
     }
 }
-*/

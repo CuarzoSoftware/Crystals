@@ -1,6 +1,8 @@
-/*#include <protocols/BackgroundBlur/GBackgroundBlurManager.h>
-#include <protocols/InvisibleRegion/GInvisibleRegionManager.h>
-#include <protocols/SvgPath/GSvgPathManager.h>*/
+#include <Protocols/BackgroundBlur/GBackgroundBlurManager.h>
+#include <Protocols/InvisibleRegion/GInvisibleRegionManager.h>
+#include <Protocols/SvgPath/GSvgPathManager.h>
+
+#include <LGlobal.h>
 
 #include <Core/CZCursorShape.h>
 #include <Core/Compositor.h>
@@ -22,7 +24,7 @@
 
 Compositor::Compositor() noexcept
 {
-    // LBackgroundBlur::maskingCapabilities.set(LBackgroundBlur::RoundRectMaskCap | LBackgroundBlur::SVGPathMaskCap);
+    LBackgroundBlur::MaskCaps.set(LBackgroundBlur::RoundRectMaskCap | LBackgroundBlur::SVGPathMaskCap);
 }
 
 void Compositor::initialized() noexcept
@@ -39,11 +41,10 @@ void Compositor::uninitialized() noexcept {}
 
 bool Compositor::createGlobalsRequest()
 {
-    /*
-    using namespace Louvre::Protocols;
+    using namespace CZ::Protocols;
     createGlobal<BackgroundBlur::GBackgroundBlurManager>();
     createGlobal<InvisibleRegion::GInvisibleRegionManager>();
-    createGlobal<SvgPath::GSvgPathManager>();*/
+    createGlobal<SvgPath::GSvgPathManager>();
     return LCompositor::createGlobalsRequest();
 }
 
@@ -126,8 +127,8 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
         return new Pointer(params);
     case LFactoryObject::Type::LKeyboard:
         return new Keyboard(params);
-    //case LFactoryObject::Type::LBackgroundBlur:
-    //    return new SurfaceBlurManager(params);
+    case LFactoryObject::Type::LBackgroundBlur:
+        return new SurfaceBlurManager(params);
     default:
         return nullptr;
     }

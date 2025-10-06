@@ -6,23 +6,6 @@
 #include <Core/Types.h>
 #include <Core/CZObject.h>
 #include <Scene/Scene.h>
-#include <Nodes/AKSolidColor.h>
-#include <Nodes/AKText.h>
-#include <Nodes/AKButton.h>
-#include <Nodes/AKWindowButtonGroup.h>
-#include <Nodes/AKTextField.h>
-#include <Effects/AKBackgroundBlurEffect.h>
-
-class blur : public AKBackgroundBlurEffect
-{
-public:
-    using AKBackgroundBlurEffect::AKBackgroundBlurEffect;
-
-    void onSceneCalculatedRect() override {
-        AKBackgroundBlurEffect::onSceneCalculatedRect();
-    }
-};
-
 
 class Output final : public LOutput
 {
@@ -36,17 +19,6 @@ public:
 
         std::shared_ptr<AKTarget> target;
         bool ignoreKayRepaintCalls { false };
-
-        //AKSolidColor testSolidColor { SK_ColorBLUE };
-        //AKText testText { "Crystals" };
-
-        AKTextField field {};
-
-        AKContainer testBlurContainer {};
-        blur blurFX { &testBlurContainer };
-
-        AKButton button { "Hello world!" };
-        AKWindowButtonGroup windowBtns { nullptr };
     };
 
     using LOutput::LOutput;

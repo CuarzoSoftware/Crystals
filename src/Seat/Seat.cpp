@@ -1,9 +1,13 @@
-#include "Core/CZCore.h"
-#include "Scene/Scene.h"
-#include <Seat/Seat.h>
+#include <LBackgroundBlur.h>
+#include <Core/CZCore.h>
 #include <Core/CZInputDevice.h>
 #include <Core/Compositor.h>
 #include <Core/Log.h>
+
+#include <Scene/Scene.h>
+#include <Seat/Seat.h>
+
+#include <Roles/Surface.h>
 
 #include <Events/CZInputDevicePluggedEvent.h>
 #include <Louvre/Backends/LBackend.h>
@@ -12,6 +16,15 @@
 Seat::Seat(const void *params) noexcept : LSeat(params)
 {
     log = Log.newWithContext("Seat");
+}
+
+void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
+{
+    if (prev)
+        prev->surface()->backgroundBlur()->configureState(LBackgroundBlur::Disabled);
+
+    if (activeToplevel())
+        activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
 }
 
 void Seat::configureLibinputDevice(libinput_device *dev) noexcept

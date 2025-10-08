@@ -7,7 +7,6 @@ SurfaceBlurManager::SurfaceBlurManager(const void *params) noexcept : LBackgroun
 
 void SurfaceBlurManager::configureRequest()
 {
-    configureColorHint(ColorHint::Light);
     configureState(State::Enabled);
 }
 
@@ -15,15 +14,11 @@ void SurfaceBlurManager::propsChanged(CZBitset<PropChanges> changes, const Props
 {
     auto &surface { *static_cast<Surface*>(this->surface()) };
 
-    if (changes.has(PropChanges::ColorHintChanged))
-    {
-        // TODO: Implement dark blur in Kay
-    }
+    if (changes.has(PropChanges::ColorSchemeChanged))
+        fx.setColorScheme(props().colorScheme);
 
     if (changes.has(PropChanges::RegionChanged))
-    {
         fx.setRegion(props().region);
-    }
 
     if (changes.has(PropChanges::MaskChanged))
     {

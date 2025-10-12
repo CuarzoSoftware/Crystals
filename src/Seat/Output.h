@@ -1,8 +1,8 @@
 #ifndef OUTPUT_H
 #define OUTPUT_H
 
-#include <LOutput.h>
-#include <AKTarget.h>
+#include <Louvre/Seat/LOutput.h>
+#include <AK/AKTarget.h>
 #include <Core/Types.h>
 #include <Core/CZObject.h>
 #include <Scene/Scene.h>

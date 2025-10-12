@@ -2,8 +2,9 @@
 #define COMPOSITOR_H
 
 #include <Core/Types.h>
-#include <LCompositor.h>
-#include <AKApp.h>
+#include <Louvre/Louvre.h>
+#include <Louvre/LCompositor.h>
+#include <AK/AKApp.h>
 
 using namespace CZ;
 

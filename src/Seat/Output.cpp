@@ -1,10 +1,10 @@
+#include <Louvre/Cursor/LCursor.h>
+#include <Louvre/LCompositor.h>
+#include <Ream/RSurface.h>
+#include <Ream/RPass.h>
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
-#include <RSurface.h>
-#include <LCursor.h>
-#include <LCompositor.h>
-#include <RPass.h>
 
 Output::Resources::Resources(Output &output) noexcept : output(output)
 {
@@ -23,6 +23,7 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 
 void Output::initializeGL()
 {
+    setPos({200, 300});
     res = std::make_unique<Resources>(*this);
     //setScale(1.5f);
     //enableFractionalOversampling(false);
@@ -34,10 +35,10 @@ void Output::paintGL()
     syncSurfaceViews();
     res->ignoreKayRepaintCalls = false;
 
-    auto surface { RSurface::WrapImage(currentImage()) };
+    auto surface { RSurface::WrapImage(image()) };
     surface->setGeometry({
         .viewport = SkRect::Make(rect()),
-        .dst = SkRect::Make(realBufferSize()),
+        .dst = SkRect::Make(image()->size()),
         .transform = transform()
     });
 

@@ -1,8 +1,8 @@
-#include <Events/CZKeyboardKeyEvent.h>
+#include <Core/Events/CZKeyboardKeyEvent.h>
 #include <Core/CZCore.h>
 #include <Seat/Keyboard.h>
 #include <Scene/Scene.h>
-#include <AKApp.h>
+#include <AK/AKApp.h>
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {

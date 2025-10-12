@@ -1,7 +1,7 @@
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
-#include <LKeyboard.h>
+#include <Louvre/Seat/LKeyboard.h>
 #include <Core/Types.h>
 
 class Keyboard final : public LKeyboard

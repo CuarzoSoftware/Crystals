@@ -1,4 +1,6 @@
-#include <LBackgroundBlur.h>
+#include <Louvre/Roles/LBackgroundBlur.h>
+#include <Louvre/Backends/LBackend.h>
+
 #include <Core/CZCore.h>
 #include <Core/CZInputDevice.h>
 #include <Core/Compositor.h>
@@ -9,8 +11,6 @@
 
 #include <Roles/Surface.h>
 
-#include <Events/CZInputDevicePluggedEvent.h>
-#include <Louvre/Backends/LBackend.h>
 #include <libinput.h>
 
 Seat::Seat(const void *params) noexcept : LSeat(params)
@@ -65,9 +65,9 @@ void Seat::enabledChanged()
         configureInputDevices();
 }
 
-void Seat::inputDevicePluggedEvent(const CZInputDevicePluggedEvent &e)
+void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
 {
-    configureLibinputDevice(e.device->nativeHandle.libinput);
+    configureLibinputDevice(dev->nativeHandle.libinput);
 }
 
 void Seat::inputEvent(const CZInputEvent &e) noexcept

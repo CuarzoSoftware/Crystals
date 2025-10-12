@@ -1,11 +1,11 @@
-#include <Cursor/LShapeCursorSource.h>
-#include <Events/CZPointerSwipeUpdateEvent.h>
-#include <Events/CZPointerMoveEvent.h>
+#include <Louvre/Cursor/LShapeCursorSource.h>
+#include <Louvre/Cursor/LCursor.h>
+#include <Core/Events/CZPointerSwipeUpdateEvent.h>
+#include <Core/Events/CZPointerMoveEvent.h>
+#include <Core/CZCore.h>
+#include <AK/AKApp.h>
 #include <Seat/Pointer.h>
 #include <Scene/Scene.h>
-#include <Core/CZCore.h>
-#include <AKApp.h>
-#include <LCursor.h>
 
 void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 {

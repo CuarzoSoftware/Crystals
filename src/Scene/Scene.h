@@ -1,9 +1,9 @@
 #ifndef SCENE_H
 #define SCENE_H
 
-#include <Nodes/AKContainer.h>
-#include <AKScene.h>
-#include <LLayout.h>
+#include <AK/Nodes/AKContainer.h>
+#include <AK/AKScene.h>
+#include <Louvre/Layout/LLayout.h>
 #include <array>
 
 using namespace CZ;

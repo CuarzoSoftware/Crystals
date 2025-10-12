@@ -1,9 +1,9 @@
-#include <Protocols/BackgroundBlur/GBackgroundBlurManager.h>
-#include <Protocols/InvisibleRegion/GInvisibleRegionManager.h>
-#include <Protocols/SvgPath/GSvgPathManager.h>
-
-#include <LGlobal.h>
-
+#include <Louvre/Protocols/BackgroundBlur/GBackgroundBlurManager.h>
+#include <Louvre/Protocols/InvisibleRegion/GInvisibleRegionManager.h>
+#include <Louvre/Protocols/SvgPath/GSvgPathManager.h>
+#include <Louvre/Cursor/LCursor.h>
+#include <Louvre/Cursor/LCursorSource.h>
+#include <Louvre/LGlobal.h>
 #include <Core/CZCursorShape.h>
 #include <Core/Compositor.h>
 #include <Core/Log.h>
@@ -18,9 +18,6 @@
 #include <Seat/Keyboard.h>
 
 #include <Effects/SurfaceBlurManager.h>
-
-#include <Cursor/LCursorSource.h>
-#include <LCursor.h>
 
 Compositor::Compositor() noexcept
 {

@@ -1,10 +1,10 @@
 #ifndef SURFACE_H
 #define SURFACE_H
 
+#include <Louvre/Roles/LSurface.h>
 #include <Core/Types.h>
 #include <Core/Log.h>
 #include <Scene/SurfaceView.h>
-#include <LSurface.h>
 
 class Surface final : public LSurface
 {

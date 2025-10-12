@@ -1,9 +1,9 @@
 #ifndef SURFACEBLURMANAGER_H
 #define SURFACEBLURMANAGER_H
 
+#include <AK/Effects/AKBackgroundBlurEffect.h>
+#include <Louvre/Roles/LBackgroundBlur.h>
 #include <Core/Types.h>
-#include <Effects/AKBackgroundBlurEffect.h>
-#include <LBackgroundBlur.h>
 
 class SurfaceBlurManager final : public LBackgroundBlur
 {

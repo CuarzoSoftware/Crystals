@@ -1,7 +1,7 @@
-#include <Events/CZKeyboardEnterEvent.h>
-#include <Events/CZPointerEnterEvent.h>
-#include <Scene/Scene.h>
+#include <Core/Events/CZKeyboardEnterEvent.h>
+#include <Core/Events/CZPointerEnterEvent.h>
 #include <Core/CZCore.h>
+#include <Scene/Scene.h>
 
 Scene::Scene() noexcept
 {

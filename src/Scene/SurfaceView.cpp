@@ -1,5 +1,6 @@
 #include <Scene/SurfaceView.h>
 #include <Scene/Scene.h>
+#include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 
 SurfaceView::SurfaceView(Surface &surface) noexcept :
@@ -82,7 +83,10 @@ void SurfaceView::syncSrcRect() noexcept
 
 void SurfaceView::syncVisibility() noexcept
 {
+    const auto isMinimized { surface.toplevel() && surface.toplevel()->isMinimized() };
+
     setVisible(
         surface.mapped() &&
-        !surface.cursorRole());
+        !surface.cursorRole() &&
+        !isMinimized);
 }

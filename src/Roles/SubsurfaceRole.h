@@ -1,7 +1,7 @@
 #ifndef SUBSURFACEROLE_H
 #define SUBSURFACEROLE_H
 
-#include <Roles/LSubsurfaceRole.h>
+#include <Louvre/Roles/LSubsurfaceRole.h>
 #include <Core/Types.h>
 
 class SubsurfaceRole final : public LSubsurfaceRole

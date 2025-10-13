@@ -59,7 +59,6 @@ void Surface::parentChanged() noexcept
 
 void Surface::mappingChanged()
 {
-    Log(CZInfo, "Size Map {} x {}", size().width(), size().height());
     LSurface::mappingChanged();
     view.syncVisibility();
 }

@@ -19,14 +19,16 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
         if (!ignoreKayRepaintCalls)
             this->output.repaint();
     });
+
+    auto style { welcome.textStyle() };
+    style.setFontSize(32);
+    welcome.setTextStyle(style);
 }
 
 void Output::initializeGL()
 {
-    setPos({200, 300});
     res = std::make_unique<Resources>(*this);
-    //setScale(1.5f);
-    //enableFractionalOversampling(false);
+    initLayers();
 }
 
 void Output::paintGL()
@@ -54,17 +56,43 @@ void Output::paintGL()
 
 void Output::moveGL()
 {
+    updateLayers();
     repaint();
 }
 
 void Output::resizeGL()
 {
+    updateLayers();
     repaint();
 }
 
 void Output::uninitializeGL()
 {
     res.reset();
+}
+
+void Output::initLayers() noexcept
+{
+    for (int i = 0; i < LLayerOverlay + 1; i++)
+    {
+        res->layers[i].layout().setPositionType(YGPositionTypeAbsolute);
+        res->layers[i].layout().setAlignItems(YGAlignCenter);
+        res->layers[i].layout().setJustifyContent(YGJustifyCenter);
+        res->layers[i].setParent(&GetScene()->layers[i]);
+    }
+
+    updateLayers();
+}
+
+void Output::updateLayers() noexcept
+{
+    for (int i = 0; i < LLayerOverlay + 1; i++)
+    {
+        res->layers[i].layout().setPosition(YGEdgeLeft, pos().x());
+        res->layers[i].layout().setPosition(YGEdgeLeft, pos().y());
+        res->layers[i].layout().setWidth(rect().width());
+        res->layers[i].layout().setHeight(rect().height());
+    }
 }
 
 void Output::syncSurfaceViews() noexcept
@@ -112,20 +140,3 @@ void Output::handleSurfaceCallbacks() noexcept
         }
     }
 }
-
-void Output::addCursorDamage() noexcept
-{
-    /* When hw planes are not available */
-
-    /*
-    const LRegion &cursorDamage { cursor()->damage(this) };
-
-    if (cursorDamage.empty())
-        res->sceneTarget->inDamageRegion = nullptr;
-    else
-    {
-        Converter::LtSRegion(cursorDamage, &res->inDamage);
-        res->sceneTarget->inDamageRegion = &res->inDamage;
-    }*/
-}
-

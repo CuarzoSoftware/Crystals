@@ -20,6 +20,7 @@ class Output;
 
 class Surface;
 class SubsurfaceRole;
+class ToplevelRole;
 
 /* Scene */
 

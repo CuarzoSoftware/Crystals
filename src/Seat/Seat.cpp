@@ -48,7 +48,7 @@ void Seat::configureLibinputDevice(libinput_device *dev) noexcept
     libinput_device_config_scroll_set_natural_scroll_enabled(dev, 1);
 
     // Tap to click
-    // libinput_device_config_tap_set_enabled(libinputDev, LIBINPUT_CONFIG_TAP_ENABLED);
+    /* libinput_device_config_tap_set_enabled(libinputDev, LIBINPUT_CONFIG_TAP_ENABLED); */
 }
 
 void Seat::configureInputDevices() noexcept

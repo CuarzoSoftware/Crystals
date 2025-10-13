@@ -40,11 +40,3 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
     LPointer::pointerButtonEvent(e);
     CZCore::Get()->sendEvent(e, *AKApp::Get());
 }
-
-void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
-{
-    LPointer::pointerSwipeUpdateEvent(e);
-
-    auto &root { GetScene()->root };
-    root.layout().setPosition(YGEdgeLeft, root.layout().calculatedLeft() + e.delta.x());
-}

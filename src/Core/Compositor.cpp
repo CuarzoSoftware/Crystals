@@ -26,6 +26,9 @@ Compositor::Compositor() noexcept
 
 void Compositor::initialized() noexcept
 {
+    auto core { CZCore::Get() };
+    core->setAnimationInterval(64);
+
     app = AKApp::GetOrMake();
     scene = Scene::Make();
     GetSeat()->configureInputDevices();

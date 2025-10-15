@@ -1,3 +1,4 @@
+#include <Core/CZCore.h>
 #include <Louvre/Cursor/LCursor.h>
 #include <Louvre/LCompositor.h>
 #include <Ream/RSurface.h>
@@ -5,6 +6,8 @@
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
+#include <Core/CZAnimation.h>
+#include <Core/CZEase.h>
 
 Output::Resources::Resources(Output &output) noexcept : output(output)
 {
@@ -23,16 +26,31 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
     auto style { welcome.textStyle() };
     style.setFontSize(32);
     welcome.setTextStyle(style);
+    welcomeShadow.setOpacity(0.4f);
 }
 
 void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
     initLayers();
+
+    auto core { CZCore::Get() };
+
+    if (core->animationCount() == 0)
+    {
+        CZAnimation::OneShot(4000, [this](auto *a){
+            const Float64 half { size().height() * 0.5 };
+            GetScene()->root.layout().setPosition(YGEdgeTop, -half + half * CZEase::InOutBounce(a->value()));
+        },
+        [](auto){ GetScene()->root.layout().setPosition(YGEdgeTop, 0.0); });
+    }
 }
 
 void Output::paintGL()
 {
+    auto core { CZCore::Get() };
+    core->updateAnimations();
+
     res->ignoreKayRepaintCalls = true;
     syncSurfaceViews();
     res->ignoreKayRepaintCalls = false;
@@ -52,6 +70,9 @@ void Output::paintGL()
     GetScene()->scene->render(target);
 
     handleSurfaceCallbacks();
+
+    if (core->animationCount() > 0)
+        repaint();
 }
 
 void Output::moveGL()

@@ -4,6 +4,7 @@
 #include <Louvre/Seat/LOutput.h>
 #include <AK/AKTarget.h>
 #include <AK/Nodes/AKText.h>
+#include <AK/Effects/AKBackgroundImageShadowEffect.h>
 #include <Core/Types.h>
 #include <Core/CZObject.h>
 #include <Scene/Scene.h>
@@ -18,7 +19,8 @@ public:
         Output &output;
 
         std::array<AKContainer, Scene::LayerLast> layers;
-        AKText welcome { "F1 or Fn + F1: Launch terminal.\nCtrl + Shift + Esc: Exit.", &layers[LLayerBackground] };
+        AKText welcome { "HELLO! 👋\n\nF1 or Fn + F1: Launch terminal.\nCtrl + Shift + Esc: Exit.", &layers[LLayerBackground] };
+        AKBackgroundImageShadowEffect welcomeShadow { 48.f, {0, 8}, SK_ColorBLACK, &welcome };
 
         std::shared_ptr<AKTarget> target;
         bool ignoreKayRepaintCalls { false };

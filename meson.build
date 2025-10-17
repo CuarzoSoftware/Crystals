@@ -1,5 +1,5 @@
 project(
-    'Crystals',
+    'cz-crystals',
     'c', 'cpp',
     version : '0.1.0',
     meson_version: '>= 0.60.0',
@@ -11,14 +11,14 @@ project(
 
 wayland_server_dep  = dependency('wayland-server')
 libinput_dep        = dependency('libinput')
-cz_louvre_dep       = dependency('cz-louvre')
+cz_louvre_dep       = dependency('cz-louvre', fallback:['cz-louvre', 'cz_louvre_dep'])
 cz_core_dep         = dependency('cz-core')
 cz_skia_dep         = dependency('cz-skia')
 cz_ream_dep         = dependency('cz-ream')
 cz_kay_dep          = dependency('cz-kay')
 
 executable(
-    'crystals',
+    'cz-crystals',
     sources : run_command('find', './src', '-type', 'f', '-name', '*[.cpp,.c]', check : false).stdout().strip().split('\n'),
     include_directories: ['./src'],
     dependencies : [

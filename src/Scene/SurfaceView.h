@@ -1,8 +1,8 @@
 #ifndef SURFACEVIEW_H
 #define SURFACEVIEW_H
 
-#include <Nodes/AKImage.h>
-#include <Nodes/AKContainer.h>
+#include <AK/Nodes/AKImage.h>
+#include <AK/Nodes/AKContainer.h>
 
 class Surface;
 

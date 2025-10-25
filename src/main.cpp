@@ -12,16 +12,18 @@ int main(void)
     setenv("CZ_LOUVRE_ENABLE_LIBSEAT",   "1", 0);
 
     setenv("CZ_CRYSTALS_LOG_LEVEL",      "0", 0);
-    setenv("CZ_LOUVRE_LOG_LEVEL",        "4", 1);
-    setenv("CZ_SRM_LOG_LEVEL",           "4", 0);
-    setenv("CZ_REAM_LOG_LEVEL",          "4", 0);
-    setenv("CZ_KAY_LOG_LEVEL",           "4", 1);
-    setenv("CZ_CORE_LOG_LEVEL",          "4", 1);
+    setenv("CZ_LOUVRE_LOG_LEVEL",        "3", 1);
+    setenv("CZ_SRM_LOG_LEVEL",           "3", 0);
+    setenv("CZ_REAM_LOG_LEVEL",          "3", 0);
+    setenv("CZ_KAY_LOG_LEVEL",           "3", 1);
+    setenv("CZ_CORE_LOG_LEVEL",          "3", 1);
 
     LLauncher::startDaemon();
 
     Compositor compositor;
-    compositor.start();
+
+    if (!compositor.start())
+        return 1;
 
     while (compositor.state() != LCompositor::Uninitialized)
         compositor.dispatch(-1);

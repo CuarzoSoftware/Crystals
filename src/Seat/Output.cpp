@@ -110,7 +110,7 @@ void Output::updateLayers() noexcept
     for (int i = 0; i < LLayerOverlay + 1; i++)
     {
         res->layers[i].layout().setPosition(YGEdgeLeft, pos().x());
-        res->layers[i].layout().setPosition(YGEdgeLeft, pos().y());
+        res->layers[i].layout().setPosition(YGEdgeTop, pos().y());
         res->layers[i].layout().setWidth(rect().width());
         res->layers[i].layout().setHeight(rect().height());
     }

@@ -19,6 +19,8 @@
 
 #include <Effects/SurfaceBlurManager.h>
 
+#include <RResourceTracker.h>
+
 Compositor::Compositor() noexcept
 {
     LBackgroundBlur::MaskCaps.set(LBackgroundBlur::RoundRectMaskCap | LBackgroundBlur::SVGPathMaskCap);
@@ -55,6 +57,9 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
         return new Keyboard(params);
     case LFactoryObject::Type::LBackgroundBlur:
         return new SurfaceBlurManager(params);
+    case LFactoryObject::Type::LClient:
+        // RResourceTrackerLog();
+        return nullptr;
     default:
         return nullptr;
     }

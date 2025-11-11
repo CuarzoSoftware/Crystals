@@ -40,7 +40,7 @@ void Output::initializeGL()
     {
         CZAnimation::OneShot(4000, [this](auto *a){
             const Float64 half { size().height() * 0.5 };
-            GetScene()->root.layout().setPosition(YGEdgeTop, -half + half * CZEase::InOutBounce(a->value()));
+            GetScene()->root.layout().setPosition(YGEdgeTop, -half + half * CZEase::OutBounce(a->value()));
         },
         [](auto){ GetScene()->root.layout().setPosition(YGEdgeTop, 0.0); });
     }

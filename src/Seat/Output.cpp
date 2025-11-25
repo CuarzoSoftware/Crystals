@@ -6,7 +6,7 @@
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
-#include <Core/CZAnimation.h>
+#include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
 
 Output::Resources::Resources(Output &output) noexcept : output(output)
@@ -36,13 +36,56 @@ void Output::initializeGL()
 
     auto core { CZCore::Get() };
 
+    CZTimer::OneShot(1000, [this](CZTimer *t){
+        if (animState == 2)
+            return;
+        else
+        {
+            animState++;
+            t->start(1000);
+        }
+    });
+
+    animX.setFrom(-size().width() * 0.5);
+    animX.setTo(size().width() * 0.25);
+    animY.setFrom(-size().height() * 0.5);
+    animY.setTo(size().height() * 0.25);
+
+    animX.setOnUpdateCallback([this](auto *anim){
+        auto *a { static_cast<CZSpringAnimation*>(anim) };
+        GetScene()->root.layout().setPosition(YGEdgeLeft, a->value());
+
+        if (animState == 1)
+            a->setTo(0);
+    });
+    animX.setOnFinishCallback([](auto){
+        GetScene()->root.layout().setPosition(YGEdgeLeft, 0.0);
+    });
+
+    animY.setOnUpdateCallback([this](auto *anim){
+        auto *a { static_cast<CZSpringAnimation*>(anim) };
+        GetScene()->root.layout().setPosition(YGEdgeTop, a->value());
+
+        if (animState == 1)
+            a->setTo(-size().height() * 0.25);
+        else if (animState == 2)
+            a->setTo(0);
+    });
+    animY.setOnFinishCallback([](auto){
+       GetScene()->root.layout().setPosition(YGEdgeTop, 0.0);
+    });
+
+    animX.start();
+    animY.start();
+
     if (core->animationCount() == 0)
     {
-        CZAnimation::OneShot(4000, [this](auto *a){
+        /*
+        CZLinearAnimation::OneShot(4000, [this](auto *a){
             const Float64 half { size().height() * 0.5 };
             GetScene()->root.layout().setPosition(YGEdgeTop, -half + half * CZEase::InOutBounce(a->value()));
         },
-        [](auto){ GetScene()->root.layout().setPosition(YGEdgeTop, 0.0); });
+        [](auto){ GetScene()->root.layout().setPosition(YGEdgeTop, 0.0); });*/
     }
 }
 

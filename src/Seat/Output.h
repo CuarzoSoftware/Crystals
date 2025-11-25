@@ -8,6 +8,7 @@
 #include <Core/Types.h>
 #include <Core/CZObject.h>
 #include <Scene/Scene.h>
+#include <Core/CZSpringAnimation.h>
 
 class Output final : public LOutput
 {
@@ -40,6 +41,9 @@ public:
     void handleSurfaceCallbacks() noexcept;
 
     std::unique_ptr<Resources> res;
+    CZSpringAnimation animX { 0.0, 1.0, 0.0, CZSpringAnimation::StiffnessLow, CZSpringAnimation::DampingRatioMediumBouncy };
+    CZSpringAnimation animY { 0.0, 1.0, 0.0, CZSpringAnimation::StiffnessLow, CZSpringAnimation::DampingRatioMediumBouncy };
+    int animState { 0 };
 };
 
 #endif // OUTPUT_H

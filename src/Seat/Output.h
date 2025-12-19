@@ -41,8 +41,8 @@ public:
     void handleSurfaceCallbacks() noexcept;
 
     std::unique_ptr<Resources> res;
-    CZSpringAnimation animX { 0.0, 1.0, 0.0, CZSpringAnimation::StiffnessLow, CZSpringAnimation::DampingRatioMediumBouncy };
-    CZSpringAnimation animY { 0.0, 1.0, 0.0, CZSpringAnimation::StiffnessLow, CZSpringAnimation::DampingRatioMediumBouncy };
+    CZSpringAnimation animX { 0.0, 1.0, 0.0, 1, CZSpringAnimation::DampingRatioMediumBouncy };
+    CZSpringAnimation animY { 0.0, 1.0, 0.0, 1, CZSpringAnimation::DampingRatioMediumBouncy };
     int animState { 0 };
 };
 

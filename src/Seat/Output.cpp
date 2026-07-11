@@ -114,7 +114,10 @@ void Output::paintGL()
 
     handleSurfaceCallbacks();
 
-    if (core->animationCount() > 0)
+    // Keep repainting only while animations are actually running. animationCount() also counts
+    // stopped-but-still-registered (non-oneshot) animations, which would busy-loop repaints at the
+    // display's refresh rate forever (burning CPU at idle).
+    if (core->hasRunningAnimations())
         repaint();
 }
 

@@ -15,7 +15,7 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
     scene->layers[LLayerOverlay].enableChildrenClipping(false);
 
     target = scene->scene->makeTarget();
-    target->setClearColor(SK_ColorWHITE);
+    target->setClearColor(0xFF90e0ef);
     target->userData = &output;
 
     target->onMarkedDirty.subscribe(this, [this](auto &){
@@ -51,18 +51,18 @@ void Output::initializeGL()
     animY.setFrom(-size().height() * 0.5);
     animY.setTo(size().height() * 0.25);
 
-    animX.setOnUpdateCallback([this](auto *anim){
+    animX.onUpdate.subscribe(&animX, [this](auto *anim){
         auto *a { static_cast<CZSpringAnimation*>(anim) };
         GetScene()->root.layout().setPosition(YGEdgeLeft, a->value());
 
         if (animState == 1)
             a->setTo(0);
     });
-    animX.setOnFinishCallback([](auto){
+    animX.onFinish.subscribe(&animX, [](auto){
         GetScene()->root.layout().setPosition(YGEdgeLeft, 0.0);
     });
 
-    animY.setOnUpdateCallback([this](auto *anim){
+    animY.onUpdate.subscribe(&animY, [this](auto *anim){
         auto *a { static_cast<CZSpringAnimation*>(anim) };
         GetScene()->root.layout().setPosition(YGEdgeTop, a->value());
 
@@ -71,7 +71,7 @@ void Output::initializeGL()
         else if (animState == 2)
             a->setTo(0);
     });
-    animY.setOnFinishCallback([](auto){
+    animY.onFinish.subscribe(&animY, [](auto){
        GetScene()->root.layout().setPosition(YGEdgeTop, 0.0);
     });
 

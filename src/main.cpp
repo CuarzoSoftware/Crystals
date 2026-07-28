@@ -25,6 +25,8 @@ int main(void)
     if (!compositor.start())
         return 1;
 
+    LLauncher::launch("swaybg --image /home/eduardo/wallpaper.png");
+
     while (compositor.state() != LCompositor::Uninitialized)
         compositor.dispatch(-1);
 

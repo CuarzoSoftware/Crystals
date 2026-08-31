@@ -3,7 +3,8 @@
 
 #include <Core/CZCore.h>
 #include <Core/CZInputDevice.h>
-#include <Core/Compositor.h>
+#include <Core/Client.h>
+#include <Core/Crystals.h>
 #include <Core/Log.h>
 
 #include <Scene/Scene.h>
@@ -24,7 +25,15 @@ void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
         prev->surface()->backgroundBlur()->configureState(LBackgroundBlur::Disabled);
 
     if (activeToplevel())
+    {
         activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
+
+        if (auto heaven = GetCompositor()->heaven)
+        {
+            auto *client { static_cast<Client*>(activeToplevel()->client()) };
+            heaven->setActiveClient(client->dbusId);
+        }
+    }
 }
 
 void Seat::configureLibinputDevice(libinput_device *dev) noexcept

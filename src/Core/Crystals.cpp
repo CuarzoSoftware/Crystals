@@ -5,7 +5,8 @@
 #include <Louvre/Cursor/LCursorSource.h>
 #include <Louvre/LGlobal.h>
 #include <Core/CZCursorShape.h>
-#include <Core/Compositor.h>
+#include <Core/Client.h>
+#include <Core/Crystals.h>
 #include <Core/Log.h>
 #include <Scene/Scene.h>
 
@@ -21,12 +22,12 @@
 
 #include <RResourceTracker.h>
 
-Compositor::Compositor() noexcept
+Crystals::Crystals() noexcept
 {
     LBackgroundBlur::MaskCaps.set(LBackgroundBlur::RoundRectMaskCap | LBackgroundBlur::SVGPathMaskCap);
 }
 
-void Compositor::initialized() noexcept
+void Crystals::initialized() noexcept
 {
     auto core { CZCore::Get() };
     core->setAnimationInterval(64);
@@ -35,11 +36,26 @@ void Compositor::initialized() noexcept
     scene = Scene::Make();
     GetSeat()->configureInputDevices();
     LCompositor::initialized();
+
+    if ((heaven = HNCompositor::GetOrMake()))
+    {
+        heaven->onClientRegistered.subscribe(this, [this](const char *privateHandle, const char *dbusId){
+            for (auto *cli : clients())
+            {
+                if (strcmp(cli->privateHandle().c_str(), privateHandle) == 0)
+                {
+                    Log(CZInfo, CZLN, "Found LClient for D-BUS ID {}", dbusId);
+                    cli->dbusId = dbusId;
+                    return;
+                }
+            }
+        });
+    }
 }
 
-void Compositor::uninitialized() noexcept {}
+void Crystals::uninitialized() noexcept {}
 
-LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType, const void *params)
+LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, const void *params)
 {
     switch (objectType)
     {
@@ -58,8 +74,7 @@ LFactoryObject *Compositor::createObjectRequest(LFactoryObject::Type objectType,
     case LFactoryObject::Type::LBackgroundBlur:
         return new SurfaceBlurManager(params);
     case LFactoryObject::Type::LClient:
-        // RResourceTrackerLog();
-        return nullptr;
+        return new Client(params);
     default:
         return nullptr;
     }

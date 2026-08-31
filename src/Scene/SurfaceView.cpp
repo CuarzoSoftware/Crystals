@@ -2,6 +2,7 @@
 #include <Scene/Scene.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
+#include <Louvre/Roles/LPopupRole.h>
 
 SurfaceView::SurfaceView(Surface &surface) noexcept :
     AKContainer(YGFlexDirectionColumn, false, &GetScene()->layers[LLayerMiddle]),

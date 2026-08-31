@@ -12,10 +12,11 @@ project(
 wayland_server_dep  = dependency('wayland-server')
 libinput_dep        = dependency('libinput')
 cz_louvre_dep       = dependency('cz-louvre', fallback:['cz-louvre', 'cz_louvre_dep'])
-cz_core_dep         = dependency('cz-core')
-cz_skia_dep         = dependency('cz-skia')
-cz_ream_dep         = dependency('cz-ream')
-cz_kay_dep          = dependency('cz-kay')
+cz_core_dep         = dependency('cz-core', fallback:['cz-core', 'cz_core_dep'])
+cz_skia_dep         = dependency('cz-skia', fallback:['cz-skia', 'cz_skia_dep'])
+cz_ream_dep         = dependency('cz-ream', fallback:['cz-ream', 'cz_ream_dep'])
+cz_kay_dep          = dependency('cz-kay', fallback:['cz-kay', 'cz_kay_dep'])
+cz_heaven_dep       = dependency('cz-heaven-compositor', fallback:['cz-heaven', 'cz_heaven_compositor_dep'])
 
 executable(
     'cz-crystals',
@@ -28,6 +29,7 @@ executable(
         cz_core_dep,
         cz_skia_dep,
         cz_ream_dep,
-        cz_kay_dep
+        cz_kay_dep,
+        cz_heaven_dep
     ],
     install : true)

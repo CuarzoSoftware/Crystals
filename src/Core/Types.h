@@ -8,7 +8,8 @@ using namespace CZ;
 
 /* Core */
 
-class Compositor;
+class Client;
+class Crystals;
 
 /* Seat */
 
@@ -29,7 +30,7 @@ class SurfaceView;
 
 /* Global handles */
 
-Compositor *GetCompositor() noexcept;
+Crystals *GetCompositor() noexcept;
 Scene *GetScene() noexcept;
 Seat *GetSeat() noexcept;
 const std::list<Surface*> &GetSurfaces() noexcept;

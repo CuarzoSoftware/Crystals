@@ -5,15 +5,19 @@
 #include <Louvre/Louvre.h>
 #include <Louvre/LCompositor.h>
 #include <AK/AKApp.h>
+#include <Heaven/Compositor/HNCompositor.h>
 
 using namespace CZ;
+using namespace CZ::HNCompositorAPI;
 
-class Compositor final : public LCompositor
+class Crystals final : public LCompositor
 {
 public:
-    Compositor() noexcept;
+    Crystals() noexcept;
+    const std::vector<Client*> &clients() const noexcept { return (std::vector<Client*> &)LCompositor::clients(); };
     std::shared_ptr<AKApp> app;
     std::shared_ptr<Scene> scene;
+    std::shared_ptr<HNCompositor> heaven;
 
 private:
     void initialized() noexcept override;

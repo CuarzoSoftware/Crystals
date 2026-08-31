@@ -1,4 +1,4 @@
-#include <Core/Compositor.h>
+#include <Core/Crystals.h>
 #include <LLauncher.h>
 
 int main(void)
@@ -20,12 +20,12 @@ int main(void)
 
     LLauncher::startDaemon();
 
-    Compositor compositor;
+    Crystals compositor;
 
     if (!compositor.start())
         return 1;
 
-    LLauncher::launch("swaybg --image /home/eduardo/wallpaper.png");
+    LLauncher::launch("swaybg --image /home/eduardo/wallpaper.jpg");
 
     while (compositor.state() != LCompositor::Uninitialized)
         compositor.dispatch(-1);

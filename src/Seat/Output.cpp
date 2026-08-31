@@ -1,3 +1,4 @@
+#include "LBaseSurfaceRole.h"
 #include <Core/CZCore.h>
 #include <Louvre/Cursor/LCursor.h>
 #include <Louvre/LCompositor.h>

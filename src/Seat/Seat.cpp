@@ -27,13 +27,11 @@ void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
     if (activeToplevel())
     {
         activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
-
-        if (auto heaven = GetCompositor()->heaven)
-        {
-            auto *client { static_cast<Client*>(activeToplevel()->client()) };
-            heaven->setActiveClient(client->dbusId);
-        }
+        auto *client { static_cast<Client*>(activeToplevel()->client()) };
+        client->setActiveHeavenClient();
     }
+    else if (auto heaven = GetCompositor()->heaven)
+        heaven->setActiveClient("");
 }
 
 void Seat::configureLibinputDevice(libinput_device *dev) noexcept

@@ -20,7 +20,7 @@ public:
         Output &output;
 
         std::array<AKContainer, Scene::LayerLast> layers;
-        AKText welcome { "HELLO! 👋\n\nF1 or Fn + F1: Launch terminal.\nCtrl + Shift + Esc: Exit.", &layers[LLayerBackground] };
+        AKText welcome { "HELLO! 👋\n\nF1 or Fn + F1: Launch terminal.\nCtrl + Shift + Esc: Exit.", &layers[LLayerBottom] };
         AKBackgroundImageShadowEffect welcomeShadow { 48.f, {0, 8}, SK_ColorBLACK, &welcome };
 
         std::shared_ptr<AKTarget> target;
@@ -41,9 +41,6 @@ public:
     void handleSurfaceCallbacks() noexcept;
 
     std::unique_ptr<Resources> res;
-    CZSpringAnimation animX { 0.0, 1.0, 0.0, 1, CZSpringAnimation::DampingRatioMediumBouncy };
-    CZSpringAnimation animY { 0.0, 1.0, 0.0, 1, CZSpringAnimation::DampingRatioMediumBouncy };
-    int animState { 0 };
 };
 
 #endif // OUTPUT_H

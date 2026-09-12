@@ -34,60 +34,6 @@ void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
     initLayers();
-
-    auto core { CZCore::Get() };
-
-    CZTimer::OneShot(1000, [this](CZTimer *t){
-        if (animState == 2)
-            return;
-        else
-        {
-            animState++;
-            t->start(1000);
-        }
-    });
-
-    animX.setFrom(-size().width() * 0.5);
-    animX.setTo(size().width() * 0.25);
-    animY.setFrom(-size().height() * 0.5);
-    animY.setTo(size().height() * 0.25);
-
-    animX.onUpdate.subscribe(&animX, [this](auto *anim){
-        auto *a { static_cast<CZSpringAnimation*>(anim) };
-        GetScene()->root.layout().setPosition(YGEdgeLeft, a->value());
-
-        if (animState == 1)
-            a->setTo(0);
-    });
-    animX.onFinish.subscribe(&animX, [](auto){
-        GetScene()->root.layout().setPosition(YGEdgeLeft, 0.0);
-    });
-
-    animY.onUpdate.subscribe(&animY, [this](auto *anim){
-        auto *a { static_cast<CZSpringAnimation*>(anim) };
-        GetScene()->root.layout().setPosition(YGEdgeTop, a->value());
-
-        if (animState == 1)
-            a->setTo(-size().height() * 0.25);
-        else if (animState == 2)
-            a->setTo(0);
-    });
-    animY.onFinish.subscribe(&animY, [](auto){
-       GetScene()->root.layout().setPosition(YGEdgeTop, 0.0);
-    });
-
-    animX.start();
-    animY.start();
-
-    if (core->animationCount() == 0)
-    {
-        /*
-        CZLinearAnimation::OneShot(4000, [this](auto *a){
-            const Float64 half { size().height() * 0.5 };
-            GetScene()->root.layout().setPosition(YGEdgeTop, -half + half * CZEase::InOutBounce(a->value()));
-        },
-        [](auto){ GetScene()->root.layout().setPosition(YGEdgeTop, 0.0); });*/
-    }
 }
 
 void Output::paintGL()

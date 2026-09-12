@@ -46,8 +46,45 @@ void Crystals::initialized() noexcept
                 {
                     Log(CZInfo, CZLN, "Found LClient for D-BUS ID {}", dbusId);
                     cli->dbusId = dbusId;
+
+                    if (seat()->activeToplevel() && seat()->activeToplevel()->client() == cli)
+                        cli->setActiveHeavenClient();
                     return;
                 }
+            }
+        });
+
+        heaven->onCloseActiveClient.subscribe(this, [this](){
+            if (seat()->activeToplevel())
+                seat()->activeToplevel()->close();
+        });
+
+        heaven->onToggleActiveClientFullscreen.subscribe(this, [this](){
+            if (auto *tl = seat()->activeToplevel())
+            {
+                auto state { tl->pendingConfiguration().windowState };
+                if (state.has(CZWinFullscreen))
+                    tl->unsetFullscreenRequest();
+                else
+                    tl->setFullscreenRequest(nullptr);
+            }
+        });
+
+        heaven->onToggleActiveClientMaximized.subscribe(this, [this](){
+            if (auto *tl = seat()->activeToplevel())
+            {
+                auto state { tl->pendingConfiguration().windowState };
+                if (state.has(CZWinMaximized))
+                    tl->unsetMaximizedRequest();
+                else
+                    tl->setMaximizedRequest();
+            }
+        });
+
+        heaven->onToggleActiveClientMinimized.subscribe(this, [this](){
+            if (auto *tl = seat()->activeToplevel())
+            {
+                tl->setMinimized(!tl->isMinimized());
             }
         });
     }

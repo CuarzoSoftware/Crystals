@@ -9,6 +9,7 @@ class Client final : public CZ::LClient
 public:
     Client(const void *params) : LClient(params) {}
     std::string dbusId;
+    void setActiveHeavenClient() noexcept;
 };
 
 #endif // CLIENT_H

@@ -10,6 +10,7 @@ public:
     using LKeyboard::LKeyboard;
 
     void keyEvent(const CZKeyboardKeyEvent &e) override;
+    void focusChanged() override;
 };
 
 #endif // KEYBOARD_H

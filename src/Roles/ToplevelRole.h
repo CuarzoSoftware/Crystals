@@ -10,6 +10,7 @@ public:
     using LToplevelRole::LToplevelRole;
 
     void minimizedChanged() override;
+    void appIdChanged() override;
 };
 
 #endif // TOPLEVELROLE_H

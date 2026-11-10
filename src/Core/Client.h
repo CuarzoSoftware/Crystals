@@ -9,7 +9,10 @@ class Client final : public CZ::LClient
 public:
     Client(const void *params) : LClient(params) {}
     std::string dbusId;
-    void setActiveHeavenClient() noexcept;
+
+    /// Notifies Heaven that this client is active, along with its credentials and the app id of
+    /// its active @p toplevel (nullable).
+    void setActiveHeavenClient(CZ::LToplevelRole *toplevel) noexcept;
 };
 
 #endif // CLIENT_H

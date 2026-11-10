@@ -48,7 +48,7 @@ void Crystals::initialized() noexcept
                     cli->dbusId = dbusId;
 
                     if (seat()->activeToplevel() && seat()->activeToplevel()->client() == cli)
-                        cli->setActiveHeavenClient();
+                        cli->setActiveHeavenClient(seat()->activeToplevel());
                     return;
                 }
             }

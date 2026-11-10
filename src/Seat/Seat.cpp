@@ -28,7 +28,7 @@ void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
     {
         activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
         auto *client { static_cast<Client*>(activeToplevel()->client()) };
-        client->setActiveHeavenClient();
+        client->setActiveHeavenClient(activeToplevel());
     }
     else if (auto heaven = GetCompositor()->heaven)
         heaven->setActiveClient("");

@@ -12,6 +12,7 @@
 
 #include <Roles/Surface.h>
 #include <Roles/SubsurfaceRole.h>
+#include <Roles/ToplevelRole.h>
 
 #include <Seat/Seat.h>
 #include <Seat/Output.h>
@@ -19,6 +20,7 @@
 #include <Seat/Keyboard.h>
 
 #include <Effects/SurfaceBlurManager.h>
+#include <Effects/MinimizeAnimation.h>
 
 #include <RResourceTracker.h>
 
@@ -90,7 +92,10 @@ void Crystals::initialized() noexcept
     }
 }
 
-void Crystals::uninitialized() noexcept {}
+void Crystals::uninitialized() noexcept
+{
+    MinimizeAnimation::Clear();
+}
 
 LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, const void *params)
 {
@@ -100,6 +105,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new Surface(params);
     case LFactoryObject::Type::LSubsurfaceRole:
         return new SubsurfaceRole(params);
+    case LFactoryObject::Type::LToplevelRole:
+        return new ToplevelRole(params);
     case LFactoryObject::Type::LOutput:
         return new Output(params);
     case LFactoryObject::Type::LSeat:

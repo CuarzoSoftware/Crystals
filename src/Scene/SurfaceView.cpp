@@ -2,6 +2,7 @@
 #include <Scene/Scene.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
+#include <Effects/MinimizeAnimation.h>
 #include <Louvre/Roles/LPopupRole.h>
 
 SurfaceView::SurfaceView(Surface &surface) noexcept :
@@ -89,5 +90,6 @@ void SurfaceView::syncVisibility() noexcept
     setVisible(
         surface.mapped() &&
         !surface.cursorRole() &&
-        !isMinimized);
+        !isMinimized &&
+        !MinimizeAnimation::HidesSurface(&surface)); // Unminimizing: the animation shows it
 }

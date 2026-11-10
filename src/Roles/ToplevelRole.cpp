@@ -1,5 +1,6 @@
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
+#include <Effects/MinimizeAnimation.h>
 #include <Core/Client.h>
 #include <Louvre/Seat/LSeat.h>
 
@@ -8,6 +9,10 @@ void ToplevelRole::minimizedChanged()
     LToplevelRole::minimizedChanged();
 
     auto *surf { static_cast<Surface*>(surface()) };
+
+    if (surf->mapped())
+        MinimizeAnimation::Start(*this, isMinimized());
+
     surf->view.syncVisibility();
 }
 

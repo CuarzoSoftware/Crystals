@@ -7,6 +7,7 @@
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
+#include <Effects/MinimizeAnimation.h>
 #include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
 
@@ -44,6 +45,9 @@ void Output::paintGL()
     res->ignoreKayRepaintCalls = true;
     syncSurfaceViews();
     res->ignoreKayRepaintCalls = false;
+
+    // Bake (un)minimizing toplevels (needs this thread's GL context) before rendering.
+    MinimizeAnimation::ProcessPending(*this);
 
     auto surface { RSurface::WrapImage(image()) };
     surface->setGeometry({
@@ -126,7 +130,12 @@ void Output::handleSurfaceCallbacks() noexcept
 {
     for (Surface *surface : GetSurfaces())
     {
-        if (surface->view.view.renderedOnLastTarget() || surface->cursorRole())
+        // A commit without new damage (e.g. a layout change that renders the same pixels) doesn't
+        // repaint the view, so it's never "rendered": answer its frame callbacks anyway, otherwise
+        // the client waits for them forever and stops updating (e.g. a dock animation stalling).
+        const bool idleCommit { !surface->hasDamage() && surface->view.visible() && !surface->view.intersectedTargets().empty() };
+
+        if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole())
         {
             surface->view.view.clearRenderedOnLastTarget();
             surface->requestNextFrame();

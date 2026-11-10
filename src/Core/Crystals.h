@@ -19,7 +19,35 @@ public:
     std::shared_ptr<Scene> scene;
     std::shared_ptr<HNCompositor> heaven;
 
+    /// The layer surface scope of Desk (the desktop: background and icons).
+    static constexpr const char *DeskScope { "cz-desk" };
+
+    /// Whether @p surface is (part of) the desktop.
+    static bool IsDesk(LSurface *surface) noexcept;
+
+    /// The client of the desktop (Desk), if running.
+    Client *deskClient() const noexcept;
+
+    /**
+     * @brief Tells Heaven which client's menus to show: the active toplevel's, or the desktop's when
+     *        no toplevel is active (like Finder on macOS), or none.
+     */
+    void updateActiveHeavenClient() noexcept;
+
+    /**
+     * @brief The desktop was clicked: it becomes the active "app" (its menus show right away) and
+     *        the active toplevel is deactivated, until a toplevel is activated again.
+     */
+    void activateDesk() noexcept;
+
+    /// Whether the desktop is the active "app" (see activateDesk()).
+    bool deskActive() const noexcept { return m_deskActive; }
+
+    /// A toplevel was activated: the desktop is no longer the active "app".
+    void deactivateDesk() noexcept { m_deskActive = false; }
+
 private:
+    bool m_deskActive { false };
     void initialized() noexcept override;
     void uninitialized() noexcept override;
     LFactoryObject *createObjectRequest(LFactoryObject::Type objectType, const void *params) override;

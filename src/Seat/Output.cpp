@@ -24,11 +24,6 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
         if (!ignoreKayRepaintCalls)
             this->output.repaint();
     });
-
-    auto style { welcome.textStyle() };
-    style.setFontSize(32);
-    welcome.setTextStyle(style);
-    welcomeShadow.setOpacity(0.4f);
 }
 
 void Output::initializeGL()

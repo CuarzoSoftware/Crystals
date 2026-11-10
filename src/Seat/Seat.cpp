@@ -27,11 +27,10 @@ void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
     if (activeToplevel())
     {
         activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
-        auto *client { static_cast<Client*>(activeToplevel()->client()) };
-        client->setActiveHeavenClient(activeToplevel());
+        GetCompositor()->deactivateDesk(); // A window took over from the desktop
     }
-    else if (auto heaven = GetCompositor()->heaven)
-        heaven->setActiveClient("");
+
+    GetCompositor()->updateActiveHeavenClient();
 }
 
 void Seat::configureLibinputDevice(libinput_device *dev) noexcept

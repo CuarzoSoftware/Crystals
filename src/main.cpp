@@ -32,7 +32,7 @@ int main(void)
 
     LLauncher::launch("cz-firmament");
     LLauncher::launch("cz-shelf");
-    LLauncher::launch("swaybg --image /home/eduardo/wallpaper.jpg");
+    LLauncher::launch("cz-desk");
 
     while (compositor.state() != LCompositor::Uninitialized)
         compositor.dispatch(-1);

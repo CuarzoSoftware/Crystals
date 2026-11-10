@@ -1,3 +1,5 @@
+#include <Core/Crystals.h>
+#include <Louvre/Seat/LSeat.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
 
@@ -16,6 +18,8 @@ void Surface::roleChanged() noexcept
 {
     if (cursorRole())
         view.setParent(nullptr);
+    else if (dndIcon())
+        view.setParent(&GetScene()->layers[Scene::Overlay]); // Above everything (e.g. docks)
 }
 
 void Surface::parentChanged() noexcept
@@ -61,11 +65,15 @@ void Surface::mappingChanged()
 {
     LSurface::mappingChanged();
     view.syncVisibility();
+
+    // The desktop appeared/disappeared: it owns the menus while no toplevel is active.
+    if ((!seat()->activeToplevel() || GetCompositor()->deskActive()) && Crystals::IsDesk(this))
+        GetCompositor()->updateActiveHeavenClient();
 }
 
 void Surface::raised() noexcept
 {
-    if (parent())
+    if (parent() || dndIcon())
         return;
 
     view.setParent(&GetScene()->layers[layer()]);
@@ -73,7 +81,7 @@ void Surface::raised() noexcept
 
 void Surface::layerChanged() noexcept
 {
-    if (parent())
+    if (parent() || dndIcon())
         return;
 
     view.setParent(&GetScene()->layers[layer()]);

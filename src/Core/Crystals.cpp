@@ -6,6 +6,8 @@
 #include <Louvre/LGlobal.h>
 #include <Core/CZCursorShape.h>
 #include <Core/Client.h>
+#include <Louvre/Roles/LLayerRole.h>
+#include <Louvre/Roles/LSurface.h>
 #include <Core/Crystals.h>
 #include <Core/Log.h>
 #include <Scene/Scene.h>
@@ -49,8 +51,10 @@ void Crystals::initialized() noexcept
                     Log(CZInfo, CZLN, "Found LClient for D-BUS ID {}", dbusId);
                     cli->dbusId = dbusId;
 
-                    if (seat()->activeToplevel() && seat()->activeToplevel()->client() == cli)
-                        cli->setActiveHeavenClient(seat()->activeToplevel());
+                    // Its menus may be the ones to show now (its toplevel or the desktop's).
+                    if ((seat()->activeToplevel() && !m_deskActive && seat()->activeToplevel()->client() == cli) ||
+                        ((!seat()->activeToplevel() || m_deskActive) && cli == deskClient()))
+                        updateActiveHeavenClient();
                     return;
                 }
             }
@@ -90,6 +94,58 @@ void Crystals::initialized() noexcept
             }
         });
     }
+}
+
+bool Crystals::IsDesk(LSurface *surface) noexcept
+{
+    if (!surface)
+        return false;
+
+    if (surface->parent())
+        surface = surface->topmostParent();
+
+    return surface->layerRole() && surface->layerRole()->scope() == DeskScope;
+}
+
+Client *Crystals::deskClient() const noexcept
+{
+    for (LSurface *surface : surfaces())
+        if (surface->mapped() && IsDesk(surface))
+            return static_cast<Client*>(surface->client());
+
+    return nullptr;
+}
+
+void Crystals::updateActiveHeavenClient() noexcept
+{
+    if (!heaven)
+        return;
+
+    // A toplevel's menus, unless the desktop was clicked since it was activated (its deactivation
+    // may still be pending).
+    if (auto *toplevel { seat()->activeToplevel() }; toplevel && !m_deskActive)
+    {
+        static_cast<Client*>(toplevel->client())->setActiveHeavenClient(toplevel);
+        return;
+    }
+
+    // Nothing active: the desktop's menus (once Desk registered with Heaven).
+    if (auto *desk { deskClient() }; desk && !desk->dbusId.empty())
+        desk->setActiveHeavenClient(nullptr);
+    else
+        heaven->setActiveClient("");
+}
+
+void Crystals::activateDesk() noexcept
+{
+    if (auto *toplevel { seat()->activeToplevel() })
+        toplevel->configureState(toplevel->pendingConfiguration().windowState & ~CZWinActivated);
+
+    if (m_deskActive)
+        return;
+
+    m_deskActive = true;
+    updateActiveHeavenClient();
 }
 
 void Crystals::uninitialized() noexcept

@@ -30,6 +30,8 @@ int main(void)
     if (!compositor.start())
         return 1;
 
+    LLauncher::launch("cz-firmament");
+    LLauncher::launch("cz-shelf");
     LLauncher::launch("swaybg --image /home/eduardo/wallpaper.jpg");
 
     while (compositor.state() != LCompositor::Uninitialized)

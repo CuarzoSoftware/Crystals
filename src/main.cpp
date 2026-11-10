@@ -8,7 +8,14 @@ int main(void)
     setenv("CZ_REAM_GAPI",               "GL", 1);
     */
 
-    setenv("QT_QPA_PLATFORMTHEME",       "cuarzo", 0);
+    // Qt apps use the Cuarzo platform theme plugin, even if the session set another one.
+    setenv("QT_QPA_PLATFORMTHEME",       "cuarzo", 1);
+    // A Wayland session, even when started from a tty (XDG_SESSION_TYPE=tty): Qt only picks its
+    // Wayland backend by itself when this says so, else it may fall back to X11, where the Cuarzo
+    // theme plugin can't identify its windows (no global menus).
+    setenv("XDG_SESSION_TYPE",           "wayland", 1);
+    setenv("QT_QPA_PLATFORM",            "wayland;xcb", 0);
+
     setenv("CZ_LOUVRE_WAYLAND_DISPLAY",  "louvre", 0);
     setenv("CZ_LOUVRE_ENABLE_LIBSEAT",   "1", 0);
 
@@ -29,6 +36,10 @@ int main(void)
 
     if (!compositor.start())
         return 1;
+
+    // Apps started through D-Bus / systemd activation get the theme too (they don't inherit our
+    // environment). Note: this updates the user's whole systemd session.
+    LLauncher::launch("dbus-update-activation-environment --systemd QT_QPA_PLATFORMTHEME");
 
     LLauncher::launch("cz-firmament");
     LLauncher::launch("cz-shelf");

@@ -19,6 +19,8 @@
 #include <Seat/Seat.h>
 #include <Seat/Output.h>
 #include <Seat/Pointer.h>
+#include <Seat/DND.h>
+#include <Effects/DNDReturnAnimation.h>
 #include <Seat/Keyboard.h>
 
 #include <Effects/SurfaceBlurManager.h>
@@ -151,12 +153,15 @@ void Crystals::activateDesk() noexcept
 void Crystals::uninitialized() noexcept
 {
     MinimizeAnimation::Clear();
+    DNDReturnAnimation::Clear();
 }
 
 LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, const void *params)
 {
     switch (objectType)
     {
+    case LFactoryObject::Type::LDND:
+        return new DND(params);
     case LFactoryObject::Type::LSurface:
         return new Surface(params);
     case LFactoryObject::Type::LSubsurfaceRole:

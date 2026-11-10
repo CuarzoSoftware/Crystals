@@ -7,6 +7,8 @@
 #include <Seat/Pointer.h>
 #include <Core/Crystals.h>
 #include <Louvre/Seat/LSeat.h>
+#include <Louvre/Roles/LLayerRole.h>
+#include <Louvre/Seat/LKeyboard.h>
 #include <Louvre/Roles/LToplevelRole.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Scene/Scene.h>
@@ -45,6 +47,17 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 
     // Clicking the desktop deactivates the active toplevel, so the desktop's menus show (like
     // clicking the desktop on macOS makes Finder the active app).
+    // Clicking a panel that takes no keyboard input (the top bar, the dock): the active window keeps
+    // the keyboard focus (Louvre gives it to whatever is clicked), so it stays active.
+    if (e.pressed && focus())
+    {
+        LSurface *clicked { focus()->parent() ? focus()->topmostParent() : focus() };
+
+        if (clicked->layerRole() && clicked->layerRole()->keyboardInteractivity() == LLayerRole::NoInteractivity &&
+            seat()->keyboard()->focus() == focus() && !seat()->keyboard()->grab())
+            seat()->keyboard()->setFocus(seat()->activeToplevel() ? seat()->activeToplevel()->surface() : nullptr);
+    }
+
     if (e.pressed && Crystals::IsDesk(focus()))
         GetCompositor()->activateDesk();
     else if (e.pressed && focus() && GetCompositor()->deskActive())

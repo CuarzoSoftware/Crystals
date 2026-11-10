@@ -11,6 +11,7 @@ public:
 
     void minimizedChanged() override;
     void appIdChanged() override;
+    void stateChanged(CZBitset<Changes> changes, const State &prev) override;
 };
 
 #endif // TOPLEVELROLE_H

@@ -12,13 +12,78 @@
 #include <Louvre/Roles/LToplevelRole.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Scene/Scene.h>
+#include <Decorations/SSD.h>
+#include <Louvre/Seat/LDND.h>
+#include <Louvre/Roles/LToplevelMoveSession.h>
+#include <Louvre/Roles/LToplevelResizeSession.h>
+#include <linux/input-event-codes.h>
+
+static void SetShapeCursor(CZCursorShape shape) noexcept
+{
+    auto source { cursor()->source() };
+    auto shapeSource { source ? source->asShape() : nullptr };
+
+    if (!shapeSource || shapeSource->shape() != shape)
+        cursor()->setSource(LShapeCursorSource::MakeShape(shape));
+
+    cursor()->setVisible(true);
+}
+
+static bool PointerSessionsActive() noexcept
+{
+    for (auto *s : seat()->toplevelMoveSessions())
+        if (!s->triggeringEvent().isTouchEvent()) return true;
+
+    for (auto *s : seat()->toplevelResizeSessions())
+        if (!s->triggeringEvent().isTouchEvent()) return true;
+
+    return false;
+}
 
 void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 {
     auto kay { AKApp::Get() };
     auto scene { GetScene()->scene };
 
-    LPointer::pointerMoveEvent(e);
+    // Louvre only knows surfaces: over decorations it'd focus the surface behind them. Check where the
+    // cursor lands first (unless something holds the pointer: a drag, a move/resize, a constraint).
+    SSD::Hit decoration;
+
+    // A window button held down holds the pointer too (no surface gets it until released).
+    const bool buttonPressed { SSD::ButtonPressed() };
+
+    if (!draggingSurface() && !PointerSessionsActive() && !seat()->dnd()->dragging() &&
+        !(focus() && focus()->pointerConstraintEnabled()))
+    {
+        const SkPoint prev { cursor()->pos() };
+        cursor()->move(e.delta.x(), e.delta.y());
+        decoration = SSD::HitAt(cursor()->pos());
+
+        if (decoration.ssd || buttonPressed)
+        {
+            cursor()->repaintOutputs(true);
+            setFocus(nullptr);
+        }
+        else
+            cursor()->setPos(prev);
+    }
+
+    if (!decoration.ssd && !(buttonPressed && !focus()))
+        LPointer::pointerMoveEvent(e);
+
+    // Decorations: hover looks and cursor, handled here (never through Kay events).
+    if (const auto shape { SSD::PointerMotion(decoration) })
+    {
+        SetShapeCursor(*shape);
+        return;
+    }
+
+    if (buttonPressed)
+    {
+        SetShapeCursor(CZCursorShape::Default);
+        return;
+    }
+
     e.pos = cursor()->pos();
     kay->core()->sendEvent(e, *kay);
 
@@ -29,13 +94,13 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
     // Otherwise use the focused node cursor
     if (auto *node = scene->pointerFocus())
     {
-        if (node->cursor())
-        {
-            auto shapeSource { cursor()->source()->asShape() };
+        // Decorations (e.g. while moving/resizing from them): the closest cursor up the tree.
+        if (SSD::IsDecoration(node))
+            while (!node->cursor() && node->parent())
+                node = node->parent();
 
-            if (!shapeSource || shapeSource->shape() != node->cursor())
-                cursor()->setSource(LShapeCursorSource::MakeShape(*node->cursor()));
-        }
+        if (node->cursor())
+            SetShapeCursor(*node->cursor());
         else
             cursor()->setVisible(false);
     }
@@ -43,6 +108,26 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 
 void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 {
+    if (!focus() && !seat()->dnd()->dragging())
+    {
+        // Louvre doesn't stop move/resize sessions without a focused surface (e.g. started from the
+        // decorations).
+        if (!e.pressed && e.button == BTN_LEFT)
+        {
+            for (auto it = seat()->toplevelResizeSessions().begin(); it != seat()->toplevelResizeSessions().end();)
+                it = (*it)->triggeringEvent().isTouchEvent() ? std::next(it) : (*it)->stop();
+
+            for (auto it = seat()->toplevelMoveSessions().begin(); it != seat()->toplevelMoveSessions().end();)
+                it = (*it)->triggeringEvent().isTouchEvent() ? std::next(it) : (*it)->stop();
+        }
+
+    }
+
+    // Decorations take their events (activating, moving, resizing the window, its buttons), the
+    // surface behind them (or the client) never gets them. Not while a client holds the pointer.
+    if (!seat()->dnd()->dragging() && !draggingSurface() && SSD::PointerButton(SSD::HitAt(cursor()->pos()), e))
+        return;
+
     LPointer::pointerButtonEvent(e);
 
     // Clicking the desktop deactivates the active toplevel, so the desktop's menus show (like

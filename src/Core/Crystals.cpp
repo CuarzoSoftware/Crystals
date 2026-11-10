@@ -15,6 +15,7 @@
 #include <Roles/Surface.h>
 #include <Roles/SubsurfaceRole.h>
 #include <Roles/ToplevelRole.h>
+#include <Decorations/SSDTheme.h>
 
 #include <Seat/Seat.h>
 #include <Seat/Output.h>
@@ -154,6 +155,7 @@ void Crystals::uninitialized() noexcept
 {
     MinimizeAnimation::Clear();
     DNDReturnAnimation::Clear();
+    SSDTheme::Clear();
 }
 
 LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, const void *params)

@@ -1,5 +1,6 @@
 #include <Effects/MinimizeAnimation.h>
 #include <Roles/Surface.h>
+#include <Roles/ToplevelRole.h>
 #include <Scene/Scene.h>
 #include <Seat/Output.h>
 #include <AK/AKScene.h>
@@ -136,8 +137,11 @@ SkRect MinimizeAnimation::windowRect() const noexcept
     if (!m_toplevel)
         return m_window;
 
+    // The content plus the title bar (server-side decorations).
     const LSurface *s { m_toplevel->surface() };
-    return SkRect::Make(SkIRect::MakePtSize(s->rolePos(), s->size()));
+    const Int32 titlebar { static_cast<ToplevelRole*>(m_toplevel.get())->titlebarHeight() };
+    return SkRect::Make(SkIRect::MakeXYWH(s->rolePos().x(), s->rolePos().y() - titlebar,
+                                          s->size().width(), s->size().height() + titlebar));
 }
 
 SkRect MinimizeAnimation::dockRect() const noexcept
@@ -178,9 +182,10 @@ bool MinimizeAnimation::bake(Output &output) noexcept
         return false;
 
     auto *surface { static_cast<Surface*>(m_toplevel->surface()) };
-    const SkISize size { surface->size() };
+    const Int32 titlebar { static_cast<ToplevelRole*>(m_toplevel.get())->titlebarHeight() };
+    const SkISize size { surface->size().width(), surface->size().height() + titlebar };
 
-    if (size.isEmpty() || !surface->image())
+    if (surface->size().isEmpty() || !surface->image())
         return false;
 
     auto &aux { Aux() };
@@ -199,9 +204,9 @@ bool MinimizeAnimation::bake(Output &output) noexcept
     view.setVisible(true);
     view.setParent(&aux.root);
     view.layout().setPosition(YGEdgeLeft, 0.f);
-    view.layout().setPosition(YGEdgeTop, 0.f);
+    view.layout().setPosition(YGEdgeTop, titlebar);
 
-    // The target is exactly the toplevel surface: whatever falls outside is clipped.
+    // The target is exactly the window (title bar + surface): whatever falls outside is clipped.
     aux.root.layout().setWidth(size.width());
     aux.root.layout().setHeight(size.height());
 

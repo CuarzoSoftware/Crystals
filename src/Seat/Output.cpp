@@ -88,6 +88,8 @@ void Output::initLayers() noexcept
 {
     for (int i = 0; i < LLayerOverlay + 1; i++)
     {
+        const SkRegion empty;
+        res->layers[i].setInputRegion(&empty); // Structure only (see Scene)
         res->layers[i].layout().setPositionType(YGPositionTypeAbsolute);
         res->layers[i].layout().setAlignItems(YGAlignCenter);
         res->layers[i].layout().setJustifyContent(YGJustifyCenter);

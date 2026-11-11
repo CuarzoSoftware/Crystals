@@ -1,3 +1,4 @@
+#include <Core/Volume.h>
 #include <Louvre/Protocols/BackgroundBlur/GBackgroundBlurManager.h>
 #include <Louvre/Protocols/InvisibleRegion/GInvisibleRegionManager.h>
 #include <Louvre/Protocols/SvgPath/GSvgPathManager.h>
@@ -153,6 +154,7 @@ void Crystals::activateDesk() noexcept
 
 void Crystals::uninitialized() noexcept
 {
+    Volume::Clear();
     MinimizeAnimation::Clear();
     DNDReturnAnimation::Clear();
     SSDTheme::Clear();

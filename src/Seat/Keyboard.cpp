@@ -1,6 +1,7 @@
 #include <Core/Events/CZKeyboardKeyEvent.h>
 #include <Core/CZCore.h>
 #include <Seat/Keyboard.h>
+#include <Core/Volume.h>
 #include <Scene/Scene.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Louvre/Roles/LToplevelRole.h>
@@ -10,6 +11,10 @@
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {
+    // Volume keys: taken by the compositor (see Volume), never sent to clients.
+    if (Volume::Get().keyEvent(e.code, e.isPressed))
+        return;
+
     LKeyboard::keyEvent(e);
 
     if (isKeyCodePressed(KEY_LEFTMETA) && e.code == KEY_M && e.isPressed == false && cursor()->output())

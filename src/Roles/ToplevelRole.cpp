@@ -32,33 +32,146 @@ Int32 ToplevelRole::titlebarHeight() const noexcept
     return m_ssd ? SSDTheme::TitlebarHeight : 0;
 }
 
+Int32 ToplevelRole::pendingTitlebarHeight() const noexcept
+{
+    // configureDecorationMode() falls back to client-side for clients without xdg-decoration, so the
+    // pending mode is what the window will actually get.
+    const auto &pending { pendingConfiguration() };
+    return pending.decorationMode == ServerSide && !pending.windowState.has(CZWinFullscreen) ? SSDTheme::TitlebarHeight : 0;
+}
+
 SkIPoint ToplevelRole::rolePos() const
 {
     return LToplevelRole::rolePos() + SkIPoint::Make(0, titlebarHeight());
 }
 
+void ToplevelRole::configureAvailableBounds() noexcept
+{
+    // The largest size the content may have: the available area minus the title bar.
+    LOutput *output { exclusiveOutput() ? exclusiveOutput() : cursor()->output() };
+
+    if (!output)
+        return;
+
+    SkISize bounds { output->availableGeometry().size() };
+    bounds.fHeight = std::max(1, bounds.height() - pendingTitlebarHeight());
+    configureBounds(bounds);
+}
+
+void ToplevelRole::configureMaximizedSize() noexcept
+{
+    const auto &pending { pendingConfiguration() };
+
+    if (!pending.windowState.has(CZWinMaximized) || pending.windowState.has(CZWinFullscreen))
+        return;
+
+    if (!exclusiveOutput())
+        if (LOutput *output { cursor()->output() })
+            setExclusiveOutput(output);
+
+    if (!exclusiveOutput())
+        return;
+
+    // The available area holds the title bar too.
+    SkISize size { exclusiveOutput()->availableGeometry().size() };
+    size.fHeight = std::max(1, size.height() - pendingTitlebarHeight());
+    configureSize(size);
+}
+
 void ToplevelRole::configureRequest()
 {
+    // The decoration mode first: the sizes below depend on it.
     LToplevelRole::configureRequest();
     configureDecorationMode(wantedDecorationMode());
+    configureAvailableBounds();
+
+    // Asked to be maximized before mapping (e.g. an app restoring its maximized state): the default
+    // configuration lets the client choose its size, give it the maximized one instead.
+    configureMaximizedSize();
 }
 
 void ToplevelRole::preferredDecorationModeChanged()
 {
+    // Some clients ask for server-side decorations only after their first configure: maximized
+    // ones must shrink to make room for the title bar (or grow back without it).
+    const DecorationMode prev { pendingConfiguration().decorationMode };
     configureDecorationMode(wantedDecorationMode());
+
+    if (pendingConfiguration().decorationMode != prev)
+    {
+        configureAvailableBounds();
+        configureMaximizedSize();
+    }
 }
 
 void ToplevelRole::setMaximizedRequest()
 {
     LToplevelRole::setMaximizedRequest();
+    configureMaximizedSize();
+}
 
-    // The available area holds the title bar too.
-    if (pendingConfiguration().windowState.has(CZWinMaximized) && decorationMode() == ServerSide && exclusiveOutput())
+void ToplevelRole::unsetFullscreenRequest()
+{
+    // Back to maximized (if it was): with the title bar again.
+    LToplevelRole::unsetFullscreenRequest();
+    configureMaximizedSize();
+}
+
+void ToplevelRole::fitIfYoung() noexcept
+{
+    static constexpr auto FitWindowMs { std::chrono::milliseconds(2000) };
+    static constexpr UInt32 MaxFitAttempts { 3 }; // Some can't shrink (e.g. a large minimum size)
+
+    if (decorationMode() != ServerSide || isMaximized() || isFullscreen() || resizeSession().isActive() ||
+        m_fitAttempts >= MaxFitAttempts || std::chrono::steady_clock::now() - m_created > FitWindowMs)
+        return;
+
+    LOutput *output { cursor()->output() };
+
+    if (!output)
+        return;
+
+    // The whole window (content + title bar) must fit the available area.
+    const SkISize avail { output->availableGeometry().size() };
+    const SkISize size { windowGeometry().size() };
+    const SkISize fit { std::min(size.width(), avail.width()), std::min(size.height(), avail.height() - SSDTheme::TitlebarHeight) };
+
+    if (size.isEmpty() || fit == size || fit.isEmpty())
+        return;
+
+    m_fitAttempts++;
+    m_fitPending = true;
+    configureSize(fit);
+}
+
+void ToplevelRole::placeMapped() noexcept
+{
+    auto *surf { surface() };
+    LOutput *output { exclusiveOutput() ? exclusiveOutput() : cursor()->output() };
+
+    if (!surf || !output)
+        return;
+
+    const SkIRect avail { SkIRect::MakePtSize(output->pos() + output->availableGeometry().topLeft(), output->availableGeometry().size()) };
+
+    if (isFullscreen())
     {
-        SkISize size { exclusiveOutput()->availableGeometry().size() };
-        size.fHeight -= SSDTheme::TitlebarHeight;
-        configureSize(size);
+        surf->setPos(output->pos());
+        return;
     }
+
+    // The surface position is the top-left of the whole window, title bar included (see rolePos()).
+    if (isMaximized())
+    {
+        surf->setPos(avail.topLeft());
+        return;
+    }
+
+    const SkISize size { windowGeometry().width(), windowGeometry().height() + titlebarHeight() };
+    surf->setPos(avail.x() + (avail.width() - size.width()) / 2, avail.y() + (avail.height() - size.height()) / 2);
+
+    if (surf->pos().y() < avail.y())
+        surf->setY(avail.y());
 }
 
 void ToplevelRole::titleChanged()
@@ -146,6 +259,23 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
 {
     LToplevelRole::stateChanged(changes, prev);
     updateDecorations();
+
+    // Young windows that don't fit once decorated (see fitIfYoung()). Once refitted, centered again.
+    if (changes.has(DecorationModeChanged | WindowGeometryChanged))
+    {
+        if (m_fitPending && changes.has(WindowGeometryChanged) && surface()->mapped())
+        {
+            m_fitPending = false;
+            placeMapped();
+        }
+
+        fitIfYoung();
+    }
+
+    // Decorations shown/hidden while maximized: keep the window (now with or without its title bar)
+    // at the top of the available area.
+    if (changes.has(DecorationModeChanged) && isMaximized() && !isFullscreen() && exclusiveOutput())
+        surface()->setPos(exclusiveOutput()->pos() + exclusiveOutput()->availableGeometry().topLeft());
 
     // Activated (new, clicked, or asked by e.g. the dock): it also gets the keyboard focus, which
     // apps (e.g. Qt ones) treat as being the active window.

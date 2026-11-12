@@ -384,6 +384,13 @@ void SSD::resizePressed(const CZPointerButtonEvent &e, CZBitset<CZEdge> edges) n
     const SkISize ssdMin { MinSize() }, clientMin { m_toplevel.minSize() };
     m_toplevel.resizeSession().setMinSize({ std::max(ssdMin.width(), clientMin.width()),
                                             std::max(ssdMin.height(), clientMin.height()) });
+
+    // The title bar never goes under the top bar (the constraint applies to the window's top-left,
+    // which includes the title bar, see ToplevelRole::rolePos()).
+    if (LOutput *output { CZ::cursor()->output() })
+        m_toplevel.resizeSession().setConstraints({ CZEdgeDisabled, output->pos().y() + output->availableGeometry().y(),
+                                                    CZEdgeDisabled, CZEdgeDisabled });
+
     m_toplevel.resizeSession().start(e, edges, CursorPos());
 }
 

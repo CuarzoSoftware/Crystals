@@ -1,3 +1,4 @@
+#include <Roles/ToplevelRole.h>
 #include <Core/Crystals.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Roles/Surface.h>
@@ -64,6 +65,12 @@ void Surface::parentChanged() noexcept
 void Surface::mappingChanged()
 {
     LSurface::mappingChanged();
+
+    // The default placement centers the content alone (and also moves maximized windows): place
+    // toplevels considering their title bar and state instead.
+    if (mapped() && toplevel())
+        static_cast<ToplevelRole*>(toplevel())->placeMapped();
+
     view.syncVisibility();
 
     // The desktop appeared/disappeared: it owns the menus while no toplevel is active.

@@ -10,6 +10,8 @@
 #include <Decorations/SSD.h>
 #include <Decorations/SSDTheme.h>
 #include <Core/CaptureManager.h>
+#include <Effects/SurfaceBlurManager.h>
+#include <CZ/skia/core/SkCanvas.h>
 #include <Core/Crystals.h>
 #include <Louvre/Manager/LImageCaptureSession.h>
 #include <Louvre/Manager/LImageCaptureFrame.h>
@@ -310,12 +312,10 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
 
 void ToplevelRole::imageCaptureFrameRequest(LImageCaptureFrame *frame)
 {
-    if (!CaptureManager::IsThumbnail(frame->session()))
-    {
-        LToplevelRole::imageCaptureFrameRequest(frame);
-        return;
-    }
-
+    // Like Louvre's default (the surface tree scaled to the buffer), plus the background blur behind
+    // each surface (as last rendered on screen) and, for dock thumbnails (see CaptureManager), a
+    // title bar.
+    const bool thumbnail { CaptureManager::IsThumbnail(frame->session()) };
     auto target { frame->surface() };
 
     if (!target)
@@ -325,17 +325,23 @@ void ToplevelRole::imageCaptureFrameRequest(LImageCaptureFrame *frame)
     }
 
     const SkISize bufferSize { frame->session().bufferSize() };
-    const SkRegion region { SkIRect::MakeSize(bufferSize) }; // Small: always redrawn whole
+    const SkRegion region { thumbnail ? SkRegion(SkIRect::MakeSize(bufferSize)) : frame->paintRegion() }; // Small: thumbnails are always redrawn whole
 
-    // The window (title bar included) in logical units, scaled to the buffer
+    if (region.isEmpty())
+    {
+        frame->ready();
+        return;
+    }
+
+    // The window (title bar included for thumbnails) in logical units, scaled to the buffer
     SkISize window { windowGeometry().isEmpty() ? surface()->size() : windowGeometry().size() };
-    const Int32 titlebar { titlebarHeight() };
+    const Int32 titlebar { thumbnail ? titlebarHeight() : 0 };
     window.fHeight += titlebar;
 
     const SkScalar sx { SkScalar(bufferSize.width()) / SkScalar(std::max(1, window.width())) };
     const SkScalar sy { SkScalar(bufferSize.height()) / SkScalar(std::max(1, window.height())) };
 
-    auto pass { target->beginPass(RPassCap_Painter) };
+    auto pass { target->beginPass(RPassCap_Painter | RPassCap_SkCanvas) };
 
     if (!pass)
     {
@@ -343,6 +349,7 @@ void ToplevelRole::imageCaptureFrameRequest(LImageCaptureFrame *frame)
         return;
     }
 
+    // Transparent where nothing is drawn
     auto *painter { pass->getPainter() };
     painter->setBlendMode(RBlendMode::Src);
     painter->setColor(SK_ColorTRANSPARENT);
@@ -363,11 +370,25 @@ void ToplevelRole::imageCaptureFrameRequest(LImageCaptureFrame *frame)
 
     painter->setBlendMode(RBlendMode::SrcOver);
 
-    // Content below it: back to front, subsurfaces below, the surface, subsurfaces above
+    // Surface coordinates relative to the window geometry (below the title bar), to buffer pixels
     const SkIPoint origin { -windowGeometry().x(), -windowGeometry().y() + titlebar };
 
     const std::function<void(LSurface*, SkIPoint)> draw = [&](LSurface *s, SkIPoint pos)
     {
+        // Its background blur, behind everything it shows
+        if (auto *blur { static_cast<SurfaceBlurManager*>(s->backgroundBlur()) }; blur && blur->visible())
+        {
+            SkCanvas &c { *pass->getCanvas() };
+            c.save();
+            c.clipRegion(region);
+            c.translate(pos.x() * sx, pos.y() * sy);
+            c.scale(sx, sy);
+            blur->fx.drawBlurred(c);
+            c.restore();
+            painter = pass->getPainter();
+            painter->setBlendMode(RBlendMode::SrcOver);
+        }
+
         for (auto *sub : s->subsurfacesBelow())
             if (sub->surface()->mapped())
                 draw(sub->surface(), pos + sub->localPos());

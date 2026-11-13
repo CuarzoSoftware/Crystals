@@ -6,6 +6,8 @@
 #include <Ream/RPass.h>
 #include <Seat/Output.h>
 #include <Roles/Surface.h>
+#include <Effects/SurfaceBlurManager.h>
+#include <Core/CaptureManager.h>
 #include <Scene/Scene.h>
 #include <Effects/MinimizeAnimation.h>
 #include <Core/CZLinearAnimation.h>
@@ -63,6 +65,7 @@ void Output::paintGL()
     GetScene()->scene->render(target);
 
     handleSurfaceCallbacks();
+    updateCapturedBlurs();
 
     // Keep repainting only while animations are actually running. animationCount() also counts
     // stopped-but-still-registered (non-oneshot) animations, which would busy-loop repaints at the
@@ -124,6 +127,28 @@ void Output::syncSurfaceViews() noexcept
             continue;
 
         surface->view.syncPos();
+    }
+}
+
+void Output::updateCapturedBlurs() noexcept
+{
+    // The blur behind a window is part of its captures (see ToplevelRole::imageCaptureFrameRequest())
+    for (Surface *surface : GetSurfaces())
+    {
+        auto *blur { static_cast<SurfaceBlurManager*>(surface->backgroundBlur()) };
+
+        if (!blur->blurred)
+            continue;
+
+        blur->blurred = false;
+
+        LSurface *root { surface };
+
+        while (root->subsurface() && root->parent())
+            root = root->parent();
+
+        if (root->toplevel())
+            CaptureManager::ToplevelChanged(*root->toplevel());
     }
 }
 

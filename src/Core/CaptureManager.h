@@ -26,6 +26,9 @@ public:
     /// The thumbnail buffer size of @p toplevel (its window, title bar included).
     static SkISize ThumbnailSize(LToplevelRole &toplevel) noexcept;
 
+    /// Redraws the captures of @p toplevel (e.g. its background blur changed, see Output::paintGL()).
+    static void ToplevelChanged(LToplevelRole &toplevel) noexcept;
+
     void sessionRequest(LImageCaptureSession *session) override;
     void sessionDestroyed(LImageCaptureSession *session) override;
 

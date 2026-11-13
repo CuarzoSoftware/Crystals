@@ -13,6 +13,9 @@ public:
     void propsChanged(CZBitset<PropChanges> changes, const Props &prevProps) override;
 
     AKBackgroundBlurEffect fx {};
+
+    /// Re-blurred while rendering (see Output::paintGL()): captures of its toplevel are redrawn.
+    bool blurred { false };
 };
 
 #endif // SURFACEBLURMANAGER_H

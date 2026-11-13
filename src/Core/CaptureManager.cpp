@@ -62,3 +62,18 @@ void CaptureManager::sessionDestroyed(LImageCaptureSession *session)
 {
     m_thumbnails.erase(session);
 }
+
+void CaptureManager::ToplevelChanged(LToplevelRole &toplevel) noexcept
+{
+    auto *manager { imageCaptureManager() };
+
+    if (!manager)
+        return;
+
+    // A copy: capturing may change the sessions
+    const auto sessions { manager->sessions() };
+
+    for (auto *session : sessions)
+        if (session->toplevel() == &toplevel && !session->isCursorSession() && session->state() == LImageCaptureSession::Accepted)
+            session->addDamage(SkRegion(SkIRect::MakeSize(session->bufferSize())));
+}

@@ -3,7 +3,10 @@
 #include <Roles/Surface.h>
 #include <LClient.h>
 
-SurfaceBlurManager::SurfaceBlurManager(const void *params) noexcept : LBackgroundBlur(params) {}
+SurfaceBlurManager::SurfaceBlurManager(const void *params) noexcept : LBackgroundBlur(params)
+{
+    fx.onBlurred.subscribe(this, [this]{ blurred = true; });
+}
 
 void SurfaceBlurManager::configureRequest()
 {

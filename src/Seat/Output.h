@@ -35,6 +35,7 @@ public:
     void updateLayers() noexcept;
     void syncSurfaceViews() noexcept;
     void handleSurfaceCallbacks() noexcept;
+    void updateCapturedBlurs() noexcept;
 
     std::unique_ptr<Resources> res;
 };

@@ -9,6 +9,15 @@
 #include <Louvre/Cursor/LCursor.h>
 #include <Decorations/SSD.h>
 #include <Decorations/SSDTheme.h>
+#include <Core/CaptureManager.h>
+#include <Core/Crystals.h>
+#include <Louvre/Manager/LImageCaptureSession.h>
+#include <Louvre/Manager/LImageCaptureFrame.h>
+#include <Louvre/Roles/LSubsurfaceRole.h>
+#include <CZ/Ream/RPainter.h>
+#include <CZ/Ream/RPass.h>
+#include <CZ/Ream/RSurface.h>
+#include <functional>
 #include <algorithm>
 
 ToplevelRole::ToplevelRole(const void *params) noexcept : LToplevelRole(params) {}
@@ -142,6 +151,17 @@ void ToplevelRole::fitIfYoung() noexcept
     m_fitAttempts++;
     m_fitPending = true;
     configureSize(fit);
+}
+
+void ToplevelRole::unmaximizeInPlace() noexcept
+{
+    if (!isMaximized())
+        return;
+
+    // Where it is now: Louvre puts un-maximized windows back at prevRect (see stateChanged())
+    prevRect = SkIRect::MakePtSize(surface()->pos(), windowGeometry().size());
+    configureSize(windowGeometry().size());
+    configureState(pendingConfiguration().windowState & ~CZWinMaximized);
 }
 
 void ToplevelRole::placeMapped() noexcept
@@ -286,4 +306,94 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
         if (!keyboard->grab() && !surface()->hasKeyboardFocus())
             keyboard->setFocus(surface());
     }
+}
+
+void ToplevelRole::imageCaptureFrameRequest(LImageCaptureFrame *frame)
+{
+    if (!CaptureManager::IsThumbnail(frame->session()))
+    {
+        LToplevelRole::imageCaptureFrameRequest(frame);
+        return;
+    }
+
+    auto target { frame->surface() };
+
+    if (!target)
+    {
+        frame->fail(LImageCaptureFrame::Unknown);
+        return;
+    }
+
+    const SkISize bufferSize { frame->session().bufferSize() };
+    const SkRegion region { SkIRect::MakeSize(bufferSize) }; // Small: always redrawn whole
+
+    // The window (title bar included) in logical units, scaled to the buffer
+    SkISize window { windowGeometry().isEmpty() ? surface()->size() : windowGeometry().size() };
+    const Int32 titlebar { titlebarHeight() };
+    window.fHeight += titlebar;
+
+    const SkScalar sx { SkScalar(bufferSize.width()) / SkScalar(std::max(1, window.width())) };
+    const SkScalar sy { SkScalar(bufferSize.height()) / SkScalar(std::max(1, window.height())) };
+
+    auto pass { target->beginPass(RPassCap_Painter) };
+
+    if (!pass)
+    {
+        frame->fail(LImageCaptureFrame::Unknown);
+        return;
+    }
+
+    auto *painter { pass->getPainter() };
+    painter->setBlendMode(RBlendMode::Src);
+    painter->setColor(SK_ColorTRANSPARENT);
+    painter->drawColor(region);
+
+    // Title bar (light or dark, like the decorations), with its separator
+    const Int32 barH { SkScalarRoundToInt(titlebar * sy) };
+
+    if (barH > 0)
+    {
+        const CZColorScheme scheme { GetCompositor()->colorScheme() };
+        painter->setColor(SSDTheme::TitlebarActive.resolve(scheme));
+        painter->drawColor(SkRegion(SkIRect::MakeWH(bufferSize.width(), barH)));
+        painter->setBlendMode(RBlendMode::SrcOver);
+        painter->setColor(SSDTheme::Separator.resolve(scheme));
+        painter->drawColor(SkRegion(SkIRect::MakeXYWH(0, barH - 1, bufferSize.width(), 1)));
+    }
+
+    painter->setBlendMode(RBlendMode::SrcOver);
+
+    // Content below it: back to front, subsurfaces below, the surface, subsurfaces above
+    const SkIPoint origin { -windowGeometry().x(), -windowGeometry().y() + titlebar };
+
+    const std::function<void(LSurface*, SkIPoint)> draw = [&](LSurface *s, SkIPoint pos)
+    {
+        for (auto *sub : s->subsurfacesBelow())
+            if (sub->surface()->mapped())
+                draw(sub->surface(), pos + sub->localPos());
+
+        if (auto image { s->image() })
+        {
+            RDrawImageInfo info {};
+            info.image = image;
+            info.src = s->srcRect();
+            info.srcScale = s->scale();
+            info.srcTransform = s->bufferTransform();
+            info.dst = SkIRect::MakeLTRB(
+                SkScalarRoundToInt(pos.x() * sx),
+                SkScalarRoundToInt(pos.y() * sy),
+                SkScalarRoundToInt((pos.x() + s->size().width()) * sx),
+                SkScalarRoundToInt((pos.y() + s->size().height()) * sy));
+            info.minFilter = info.magFilter = RImageFilter::Linear;
+            painter->drawImage(info, &region);
+        }
+
+        for (auto *sub : s->subsurfacesAbove())
+            if (sub->surface()->mapped())
+                draw(sub->surface(), pos + sub->localPos());
+    };
+
+    draw(surface(), origin);
+    pass.reset();
+    frame->ready();
 }

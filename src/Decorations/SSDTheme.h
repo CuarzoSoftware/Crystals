@@ -21,6 +21,7 @@ namespace SSDTheme
     constexpr Int32 TitlebarHeight      { 28 };
     constexpr Int32 BorderRadius        { 10 };   // Window corners (like Marco's CSDBorderRadius)
     constexpr Int32 ResizeOutset        { 6 };    // Invisible resize area around the window
+    constexpr Int32 ResizeInset         { 3 };    // ...and inside its edges (reachable when maximized)
     constexpr Int32 ButtonsInset        { 12 };   // Traffic lights from the left edge
     constexpr Int32 TitleSideInset      { 84 };   // Title kept clear of the buttons (both sides, centered)
     constexpr SkScalar TitleFontSize    { 13.f };

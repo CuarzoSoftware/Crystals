@@ -210,11 +210,12 @@ void SSD::update() noexcept
 std::array<SkIRect, 8> SSD::resizeRects() const noexcept
 {
     // Frame: the title bar and the content plus the resize margin around them.
-    // Corners: the margin plus the corner radius inwards. Edges: the margin, between the corners.
+    // Corners: the margin plus the corner radius inwards. Edges: the margin plus a thin band inside
+    // the window (ResizeInset: the only reachable part when maximized), between the corners.
     const SkISize size { m_toplevel.surface()->size() };
     const Int32 fw { size.width() + 2 * ResizeOutset };
     const Int32 fh { size.height() + TitlebarHeight + 2 * ResizeOutset };
-    const Int32 g { ResizeOutset + BorderRadius }, m { ResizeOutset };
+    const Int32 g { ResizeOutset + std::max(BorderRadius, ResizeInset) }, m { ResizeOutset + ResizeInset };
 
     return {
         SkIRect::MakeXYWH(0, 0, g, g),
@@ -229,8 +230,8 @@ std::array<SkIRect, 8> SSD::resizeRects() const noexcept
 
 bool SSD::resizable() const noexcept
 {
-    // Not while maximized: the client was told its exact size.
-    return !m_toplevel.isMaximized() && !m_toplevel.isFullscreen();
+    // Maximized ones too (they're un-maximized in place when a resize starts)
+    return !m_toplevel.isFullscreen();
 }
 
 /* ----------------------------------------- Title ----------------------------------------- */
@@ -381,8 +382,12 @@ void SSD::resizePressed(const CZPointerButtonEvent &e, CZBitset<CZEdge> edges) n
 {
     focus();
 
-    if (m_toplevel.isFullscreen() || m_toplevel.isMaximized())
+    if (m_toplevel.isFullscreen())
         return;
+
+    // Like macOS: resizing a maximized window un-maximizes it where it is
+    if (m_toplevel.isMaximized())
+        m_toplevel.unmaximizeInPlace();
 
     // Never smaller than the decorations allow (nor than the client asks).
     const SkISize ssdMin { MinSize() }, clientMin { m_toplevel.minSize() };
@@ -685,4 +690,13 @@ SSD::Frame::Frame(SSD &ssd) noexcept : AKContainer(YGFlexDirectionColumn, false)
     // Only its children (title bar, resize areas) take input.
     SkRegion empty;
     setInputRegion(&empty);
+}
+
+void SSD::WarmUp() noexcept
+{
+    // The same style as m_title (see the constructor): its typefaces are then cached
+    AKText text { "Window Title" };
+    text.setFontSize(SSDTheme::TitleFontSize);
+    text.setFontStyle(SkFontStyle(SkFontStyle::kSemiBold_Weight, SkFontStyle::kNormal_Width, SkFontStyle::kUpright_Slant));
+    text.setText("Warm up");
 }

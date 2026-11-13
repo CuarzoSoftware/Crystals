@@ -12,6 +12,7 @@
 #include <Louvre/Roles/LLayerRole.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Core/Crystals.h>
+#include <Core/CaptureManager.h>
 #include <Core/Log.h>
 #include <Scene/Scene.h>
 
@@ -19,6 +20,7 @@
 #include <Roles/SubsurfaceRole.h>
 #include <Roles/ToplevelRole.h>
 #include <Decorations/SSDTheme.h>
+#include <Decorations/SSD.h>
 
 #include <Seat/Seat.h>
 #include <Seat/Output.h>
@@ -45,6 +47,7 @@ void Crystals::initialized() noexcept
     app = AKApp::GetOrMake();
     scene = Scene::Make();
     initColorScheme();
+    SSD::WarmUp(); // Not when the first decorated window appears (the font lookup stalls)
     GetSeat()->configureInputDevices();
     LCompositor::initialized();
 
@@ -188,6 +191,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new SurfaceBlurManager(params);
     case LFactoryObject::Type::LClient:
         return new Client(params);
+    case LFactoryObject::Type::LImageCaptureManager:
+        return new CaptureManager(params);
     default:
         return nullptr;
     }

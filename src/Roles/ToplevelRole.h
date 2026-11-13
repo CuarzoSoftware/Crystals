@@ -33,6 +33,9 @@ public:
     /// configured, not fullscreen): what sizes sent to the client must leave room for.
     Int32 pendingTitlebarHeight() const noexcept;
 
+    /// Un-maximizes it keeping its current position and size (e.g. to resize it from there).
+    void unmaximizeInPlace() noexcept;
+
     /// Places it on its output once mapped: maximized at the top of the available area, fullscreen
     /// over the output, otherwise centered (title bar included) below the top bar.
     void placeMapped() noexcept;
@@ -46,6 +49,9 @@ public:
     void minimizedChanged() override;
     void appIdChanged() override;
     void stateChanged(CZBitset<Changes> changes, const State &prev) override;
+
+    /// Dock thumbnails (see CaptureManager): a small version of the window, title bar included.
+    void imageCaptureFrameRequest(LImageCaptureFrame *frame) override;
 
 private:
     DecorationMode wantedDecorationMode() const noexcept;

@@ -36,6 +36,15 @@
 class SSD final : public CZObject
 {
 public:
+    /**
+     * @brief Loads the title's font in advance (at startup).
+     *
+     * The first text laid out with it makes Skia match its family with fontconfig, which opens
+     * every candidate font file (up to ~1 s): otherwise the whole compositor stalls when the first
+     * decorated window appears.
+     */
+    static void WarmUp() noexcept;
+
     SSD(ToplevelRole &toplevel) noexcept;
     ~SSD();
 

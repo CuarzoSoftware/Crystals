@@ -1,0 +1,109 @@
+#!/bin/sh
+# Starts a Cuarzo session (the Crystals compositor) from a TTY or a display manager.
+#
+# - Sets the session environment (desktop name, Wayland, Qt platform theme, ...).
+# - Points D-Bus / systemd activated services (portals, ...) at this session: its Wayland display
+#   (WAYLAND_DISPLAY=louvre), desktop name (portals pick their backends with it, e.g. screen casting
+#   through xdg-desktop-portal-cz) and theme. Portals already running (e.g. from another session of
+#   this user) are stopped; once Crystals is up, xdg-desktop-portal-cz is started and then
+#   xdg-desktop-portal restarted, so it uses the Cuarzo backend right away.
+# - Runs Crystals, then restores the previous activation environment and restarts the portals again,
+#   so another session of this user (e.g. GNOME on another TTY) keeps working.
+
+COMPOSITOR="${CUARZO_COMPOSITOR:-cz-crystals}"
+SOCKET="${CZ_LOUVRE_WAYLAND_DISPLAY:-louvre}"
+
+# Session environment (inherited by Crystals and the apps it launches)
+export XDG_CURRENT_DESKTOP=Cuarzo
+export XDG_SESSION_DESKTOP=Cuarzo
+export XDG_SESSION_TYPE=wayland
+export QT_QPA_PLATFORMTHEME=cuarzo
+export QT_QPA_PLATFORM="wayland;xcb"
+export MOZ_ENABLE_WAYLAND=1
+export ELECTRON_OZONE_PLATFORM_HINT=auto
+export _JAVA_AWT_WM_NONREPARENTING=1
+export CZ_LOUVRE_WAYLAND_DISPLAY="$SOCKET"
+
+# Louvre runs nested if WAYLAND_DISPLAY is set: Crystals itself must not inherit another session's
+unset WAYLAND_DISPLAY DISPLAY
+
+# Variables handed to activated services (saved to restore them afterwards)
+VARS="WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT"
+
+PORTALS="xdg-desktop-portal.service xdg-desktop-portal-gtk.service xdg-desktop-portal-gnome.service xdg-desktop-portal-wlr.service xdg-desktop-portal-cz.service"
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+SAVED="$(systemctl --user show-environment 2>/dev/null)"
+
+restart_portals() {
+    # Stopped: re-activated on demand with the current activation environment
+    have systemctl && systemctl --user stop $PORTALS >/dev/null 2>&1
+}
+
+activate_session_env() {
+    if have dbus-update-activation-environment; then
+        dbus-update-activation-environment --systemd \
+            WAYLAND_DISPLAY="$SOCKET" \
+            XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE \
+            QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT
+    elif have systemctl; then
+        systemctl --user set-environment WAYLAND_DISPLAY="$SOCKET"
+        systemctl --user import-environment XDG_CURRENT_DESKTOP XDG_SESSION_DESKTOP XDG_SESSION_TYPE \
+            QT_QPA_PLATFORMTHEME QT_QPA_PLATFORM MOZ_ENABLE_WAYLAND ELECTRON_OZONE_PLATFORM_HINT
+    fi
+
+    # No X11 display here (no Xwayland): don't hand out another session's
+    have systemctl && systemctl --user unset-environment DISPLAY
+}
+
+restore_env() {
+    have systemctl || return
+    for var in $VARS; do
+        line="$(printf '%s\n' "$SAVED" | grep "^$var=")"
+        if [ -n "$line" ]; then
+            systemctl --user set-environment "$line"
+            have dbus-update-activation-environment && dbus-update-activation-environment "$line"
+        else
+            systemctl --user unset-environment "$var"
+        fi
+    done
+}
+
+start_cuarzo_portals() {
+    # Once Crystals' Wayland socket exists (up to 15 s): the Cuarzo backend connects to it
+    runtime="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    i=0
+    while [ ! -S "$runtime/$SOCKET" ] && [ $i -lt 150 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+
+    [ -S "$runtime/$SOCKET" ] || return
+
+    # Cuarzo's backend first, then the frontend, so it picks it up right away
+    if have systemctl && systemctl --user daemon-reload && systemctl --user restart xdg-desktop-portal-cz.service; then
+        systemctl --user restart xdg-desktop-portal.service
+    else
+        # No systemd user manager: D-Bus activation
+        busctl --user call org.freedesktop.impl.portal.desktop.cz /org/freedesktop/portal/desktop org.freedesktop.DBus.Peer Ping >/dev/null 2>&1
+        busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.DBus.Peer Ping >/dev/null 2>&1
+    fi
+}
+
+activate_session_env
+restart_portals
+
+# Crystals stays in the foreground (it needs the TTY): the portals are started alongside
+start_cuarzo_portals &
+HELPER=$!
+
+"$COMPOSITOR" "$@"
+STATUS=$?
+
+kill "$HELPER" 2>/dev/null
+
+restore_env
+restart_portals
+
+exit $STATUS

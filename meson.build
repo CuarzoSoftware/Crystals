@@ -33,3 +33,11 @@ executable(
         cz_heaven_dep
     ],
     install : true)
+
+# Session launcher (environment, portals) and display manager entry
+install_data('data/cuarzo-session',
+    install_dir : get_option('bindir'),
+    install_mode : 'rwxr-xr-x')
+
+install_data('data/cuarzo.desktop',
+    install_dir : get_option('datadir') / 'wayland-sessions')

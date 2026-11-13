@@ -1,3 +1,5 @@
+#include <cstring>
+#include <CZ/Core/Events/CZColorSchemeEvent.h>
 #include <Core/Volume.h>
 #include <Louvre/Protocols/BackgroundBlur/GBackgroundBlurManager.h>
 #include <Louvre/Protocols/InvisibleRegion/GInvisibleRegionManager.h>
@@ -42,6 +44,7 @@ void Crystals::initialized() noexcept
 
     app = AKApp::GetOrMake();
     scene = Scene::Make();
+    initColorScheme();
     GetSeat()->configureInputDevices();
     LCompositor::initialized();
 
@@ -155,6 +158,7 @@ void Crystals::activateDesk() noexcept
 void Crystals::uninitialized() noexcept
 {
     Volume::Clear();
+    m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
     DNDReturnAnimation::Clear();
     SSDTheme::Clear();
@@ -187,4 +191,46 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
     default:
         return nullptr;
     }
+}
+
+/******************************************* LIGHT / DARK *******************************************/
+
+void Crystals::initColorScheme() noexcept
+{
+    m_colorSchemeMonitor = CZColorSchemeMonitor::GetOrMake();
+
+    if (!m_colorSchemeMonitor)
+        return;
+
+    m_colorSchemeMonitor->onChanged.subscribe(this, [this](CZColorScheme scheme){ setColorScheme(scheme); });
+
+    if (m_colorSchemeMonitor->known())
+        setColorScheme(m_colorSchemeMonitor->colorScheme());
+}
+
+void Crystals::setColorScheme(CZColorScheme scheme) noexcept
+{
+    if (scheme == CZColorScheme::Unknown)
+        scheme = CZColorScheme::Light;
+
+    if (m_colorScheme == scheme)
+        return;
+
+    m_colorScheme = scheme;
+    Log(CZInfo, CZLN, "Color scheme: {}", scheme == CZColorScheme::Dark ? "dark" : "light");
+
+    // Kay nodes (e.g. the window buttons) through the scene...
+    if (this->scene && this->scene->scene)
+    {
+        const CZColorSchemeEvent event { scheme };
+        CZCore::Get()->sendEvent(event, *this->scene->scene);
+    }
+
+    // ...and the decorations' own colors
+    for (Surface *surface : GetSurfaces())
+        if (surface->toplevel())
+            static_cast<ToplevelRole*>(surface->toplevel())->updateDecorations();
+
+    for (LOutput *output : outputs())
+        output->repaint();
 }

@@ -43,7 +43,7 @@ static SkIPoint CursorPos() noexcept
 
 SSD::SSD(ToplevelRole &toplevel) noexcept :
     m_toplevel(toplevel),
-    m_titlebar(TitlebarActive, CZBorderRadius::MakeTB(BorderRadius, 0), &m_frame)
+    m_titlebar(TitlebarActive.resolve(GetCompositor()->colorScheme()), CZBorderRadius::MakeTB(BorderRadius, 0), &m_frame)
 {
     SurfaceView &view { ViewOf(toplevel) };
     const SkRegion empty;
@@ -65,7 +65,7 @@ SSD::SSD(ToplevelRole &toplevel) noexcept :
     m_separator.setInputRegion(&empty);
     m_title.setInputRegion(&empty);
 
-    m_separator.setColor(CZAdaptiveColor(Separator));
+    m_separator.setColor(Separator);
     m_separator.layout().setPositionType(YGPositionTypeAbsolute);
     m_separator.layout().setPosition(YGEdgeLeft, 0.f);
     m_separator.layout().setPosition(YGEdgeBottom, 0.f);
@@ -186,8 +186,12 @@ void SSD::update() noexcept
         button->setInputRegion(&buttonRegion);
 
     m_titlebar.layout().setWidth(size.width());
-    m_titlebar.setBackgroundColor(m_active ? TitlebarActive : TitlebarInactive);
-    m_title.setTextColor(CZAdaptiveColor(m_active ? TitleActive : TitleInactive));
+    // Light or dark, like the rest of the desktop (see Crystals::colorScheme())
+    const CZColorScheme scheme { GetCompositor()->colorScheme() };
+    m_titlebar.setBackgroundColor((m_active ? TitlebarActive : TitlebarInactive).resolve(scheme));
+    m_title.setTextColor(CZAdaptiveColor((m_active ? TitleActive : TitleInactive).resolve(scheme)));
+    m_separator.setColor(CZAdaptiveColor(Separator.resolve(scheme)));
+    m_shadow.setDark(scheme == CZColorScheme::Dark);
     updateButtons();
     updateTitle();
 
@@ -643,12 +647,22 @@ void SSD::Shadow::setActive(bool active) noexcept
     addChange(CHImage); // onSceneBegin() picks the asset
 }
 
+void SSD::Shadow::setDark(bool dark) noexcept
+{
+    if (m_dark == dark)
+        return;
+
+    m_dark = dark;
+    m_dirty = true;
+    addChange(CHImage);
+}
+
 void SSD::Shadow::onSceneBegin()
 {
     if (m_dirty || changes().testAnyOf(CHLayoutScale))
     {
         m_dirty = false;
-        const auto &asset { ShadowAsset(scale(), m_active) };
+        const auto &asset { ShadowAsset(scale(), m_active, m_dark) };
         setImage(asset.image);
         setCenter(asset.center);
     }

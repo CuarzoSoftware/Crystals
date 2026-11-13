@@ -1,4 +1,5 @@
 #include <Core/Volume.h>
+#include <Core/Crystals.h>
 #include <Core/Log.h>
 #include <Effects/VolumeHUD.h>
 #include <Seat/Output.h>
@@ -174,22 +175,19 @@ Volume::Volume() noexcept :
     // The current state, so the first press shows the new level right away.
     enqueue([this]() -> std::function<void()> {
         const std::string out { Run({ "wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@" }, true) };
-        const bool dark { Run({ "gsettings", "get", "org.gnome.desktop.interface", "color-scheme" }, true).find("dark") != std::string::npos };
         float level;
 
         if (sscanf(out.c_str(), "Volume: %f", &level) != 1)
-            return [this, dark]{ m_dark = dark; };
+            return {};
 
         const bool muted { out.find("[MUTED]") != std::string::npos };
-        return [this, level, muted, dark]{
+        return [this, level, muted]{
             // Unless a key already got the real state.
             if (m_level < 0.f)
             {
                 m_level = std::min(level, 1.f);
                 m_muted = muted;
             }
-
-            m_dark = dark;
         };
     });
 }
@@ -252,7 +250,7 @@ void Volume::run(Action action) noexcept
             m_muted = false;
         }
 
-        m_hud->show(m_level, m_muted, m_dark);
+        m_hud->show(m_level, m_muted, GetCompositor()->colorScheme() == CZColorScheme::Dark);
     }
 
     enqueue([this, action]() -> std::function<void()> {
@@ -281,9 +279,6 @@ void Volume::run(Action action) noexcept
         else
             level = -1.f;
 
-        // The HUD follows the desktop's light/dark preference.
-        const bool dark { Run({ "gsettings", "get", "org.gnome.desktop.interface", "color-scheme" }, true).find("dark") != std::string::npos };
-
         // How loud it is now (not when silent). At most a few per second while holding the key.
         if (action != Mute && level > 0.f && !muted && access(FeedbackSound, R_OK) == 0)
         {
@@ -297,7 +292,8 @@ void Volume::run(Action action) noexcept
             }
         }
 
-        return [this, level, muted, dark]{
+        // The HUD follows the desktop's light/dark preference (see Crystals::colorScheme())
+        return [this, level, muted]{
             if (level < 0.f)
             {
                 Log(CZWarning, CZLN, "Couldn't read the volume (wpctl)");
@@ -306,8 +302,7 @@ void Volume::run(Action action) noexcept
 
             m_level = std::min(level, 1.f);
             m_muted = muted;
-            m_dark = dark;
-            m_hud->show(m_level, m_muted, m_dark);
+            m_hud->show(m_level, m_muted, GetCompositor()->colorScheme() == CZColorScheme::Dark);
         };
     });
 }

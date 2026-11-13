@@ -10,7 +10,7 @@
 namespace SSDTheme
 {
 
-static std::map<std::tuple<Int32, bool>, Shadow> s_shadows;
+static std::map<std::tuple<Int32, bool, bool>, Shadow> s_shadows;
 static std::map<std::tuple<Int32, bool>, std::shared_ptr<RImage>> s_corners;
 
 static std::pair<Int32, Int32> ShadowParams(bool active) noexcept
@@ -24,10 +24,10 @@ ShadowMargins Margins(bool active) noexcept
     return { radius, std::max(0, radius - offsetY), radius, radius + offsetY };
 }
 
-const Shadow &ShadowAsset(Int32 scale, bool active) noexcept
+const Shadow &ShadowAsset(Int32 scale, bool active, bool dark) noexcept
 {
     scale = std::max(1, scale);
-    const auto key { std::make_tuple(scale, active) };
+    const auto key { std::make_tuple(scale, active, dark) };
 
     if (auto it { s_shadows.find(key) }; it != s_shadows.end())
         return it->second;
@@ -67,8 +67,23 @@ const Shadow &ShadowAsset(Int32 scale, bool active) noexcept
         paint.setBlendMode(SkBlendMode::kSrcOver);
         paint.setStroke(true);
         paint.setStrokeWidth(1.f);
-        paint.setColor(0x33000000);
-        c->drawRRect(rrect, paint);
+
+        if (dark)
+        {
+            // Dark: a faint light line at the edge (its outer half survives the clear below), a dark
+            // one right outside it, so the frame stands out on dark content
+            paint.setColor(0x40FFFFFF);
+            c->drawRRect(rrect, paint);
+            SkRRect outer;
+            rrect.outset(1.f, 1.f, &outer);
+            paint.setColor(0x99000000);
+            c->drawRRect(outer, paint);
+        }
+        else
+        {
+            paint.setColor(0x33000000);
+            c->drawRRect(rrect, paint);
+        }
 
         // The window covers the center (and the border's inner half)
         paint.setStroke(false);

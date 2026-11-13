@@ -22,7 +22,7 @@ class VolumeHUD;
  * on the output with the cursor and plays a short feedback sound at the new level. Holding a key
  * repeats it. The keys are taken by the compositor (never sent to clients).
  *
- * Nothing blocks the compositor: wpctl, the sound player and reading the color scheme run on a
+ * Nothing blocks the compositor: wpctl and the sound player run on a
  * background thread, the HUD is updated when they're done (and right away with the expected level).
  * Volume changes from anywhere else don't show the HUD.
  */
@@ -53,7 +53,7 @@ private:
 
     // Last known state (-1: unknown yet).
     float m_level { -1.f };
-    bool m_muted { false }, m_dark { false };
+    bool m_muted { false };
 
     // Key repeat (the compositor gets no repeats from the keyboard).
     UInt32 m_repeatKey { 0 };

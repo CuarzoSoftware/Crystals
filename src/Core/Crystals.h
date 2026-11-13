@@ -6,6 +6,7 @@
 #include <Louvre/LCompositor.h>
 #include <AK/AKApp.h>
 #include <Heaven/Compositor/HNCompositor.h>
+#include <CZ/Core/CZColorSchemeMonitor.h>
 
 using namespace CZ;
 using namespace CZ::HNCompositorAPI;
@@ -46,7 +47,19 @@ public:
     /// A toplevel was activated: the desktop is no longer the active "app".
     void deactivateDesk() noexcept { m_deskActive = false; }
 
+    /**
+     * @brief The desktop's light/dark preference (what Firmament's Dark Mode sets).
+     *
+     * Followed through CZColorSchemeMonitor (the XDG settings portal): Kay nodes (e.g. window buttons)
+     * get it through the scene, decorations are refreshed.
+     */
+    CZColorScheme colorScheme() const noexcept { return m_colorScheme; }
+    void setColorScheme(CZColorScheme scheme) noexcept;
+
 private:
+    void initColorScheme() noexcept;
+    CZColorScheme m_colorScheme { CZColorScheme::Light };
+    std::shared_ptr<CZColorSchemeMonitor> m_colorSchemeMonitor;
     bool m_deskActive { false };
     void initialized() noexcept override;
     void uninitialized() noexcept override;

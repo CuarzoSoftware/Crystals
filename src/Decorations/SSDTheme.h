@@ -3,6 +3,7 @@
 
 #include <Core/Types.h>
 #include <CZ/skia/core/SkColor.h>
+#include <CZ/Core/CZAdaptive.h>
 #include <CZ/skia/core/SkRect.h>
 #include <map>
 #include <memory>
@@ -30,12 +31,12 @@ namespace SSDTheme
     constexpr Int32 ShadowInactiveRadius    { 27 };
     constexpr Int32 ShadowInactiveOffsetY   { 8 };
 
-    // Colors
-    constexpr SkColor TitlebarActive    { 0xFFEBEBEB };
-    constexpr SkColor TitlebarInactive  { 0xFFF6F6F6 };
-    constexpr SkColor TitleActive       { 0xD9000000 };
-    constexpr SkColor TitleInactive     { 0x59000000 };
-    constexpr SkColor Separator         { 0x1F000000 };
+    // Colors (light, dark), like macOS windows
+    inline const CZAdaptiveColor TitlebarActive    { 0xFFEBEBEB, 0xFF383838 };
+    inline const CZAdaptiveColor TitlebarInactive  { 0xFFF6F6F6, 0xFF2B2B2B };
+    inline const CZAdaptiveColor TitleActive       { 0xD9000000, 0xD9FFFFFF };
+    inline const CZAdaptiveColor TitleInactive     { 0x59000000, 0x59FFFFFF };
+    inline const CZAdaptiveColor Separator         { 0x1F000000, 0x80000000 };
 
     struct ShadowMargins { Int32 left, top, right, bottom; };
 
@@ -50,9 +51,11 @@ namespace SSDTheme
 
     /**
      * @brief The window frame's drop shadow and hairline border as a 9-patch: each corner and side
-     *        is stretched from this minimal image (cached per scale and activation).
+     *        is stretched from this minimal image (cached per scale, activation and color scheme).
+     *
+     * Dark: a darker border, plus a faint light line inside it (the frame stands out on dark content).
      */
-    const Shadow &ShadowAsset(Int32 scale, bool active) noexcept;
+    const Shadow &ShadowAsset(Int32 scale, bool active, bool dark = false) noexcept;
 
     /**
      * @brief Alpha mask of a bottom corner of the window content (a quarter disk, cached per scale).

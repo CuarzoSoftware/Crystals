@@ -92,10 +92,11 @@ private:
     public:
         Shadow() noexcept;
         void setActive(bool active) noexcept;
+        void setDark(bool dark) noexcept;
     protected:
         void onSceneBegin() override;
     private:
-        bool m_active { true }, m_dirty { true };
+        bool m_active { true }, m_dark { false }, m_dirty { true };
     };
 
     // A node that resizes the window from the given corner/edge.

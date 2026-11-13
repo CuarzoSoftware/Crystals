@@ -56,6 +56,10 @@ void Output::paintGL()
     target->age = imageAge();
     target->setBakedNodesScale(scale());
     target->outDamage = &damage;
+
+    // Without a cursor plane Louvre paints the cursor on top: what was under it must be repainted
+    // (empty while oversampling, Louvre restores it then).
+    target->inDamage = &softwareCursorDamage();
     GetScene()->scene->render(target);
 
     handleSurfaceCallbacks();

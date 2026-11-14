@@ -13,6 +13,10 @@
 #include <Louvre/Roles/LSurface.h>
 #include <Scene/Scene.h>
 #include <Decorations/SSD.h>
+#include <Effects/TopbarAutoHide.h>
+#include <Core/Workspaces.h>
+#include <Core/Events/CZPointerSwipeBeginEvent.h>
+#include <Core/Events/CZPointerSwipeEndEvent.h>
 #include <Louvre/Seat/LDND.h>
 #include <Louvre/Roles/LToplevelMoveSession.h>
 #include <Louvre/Roles/LToplevelResizeSession.h>
@@ -42,6 +46,9 @@ static bool PointerSessionsActive() noexcept
 
 void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 {
+    // Top bars hidden by fullscreen windows: revealed at the top edge, hidden when left
+    struct AtExit { ~AtExit() { TopbarAutoHide::PointerMoved(); } } atExit;
+
     auto kay { AKApp::Get() };
     auto scene { GetScene()->scene };
 
@@ -159,4 +166,22 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
         }
     }
     CZCore::Get()->sendEvent(e, *AKApp::Get());
+}
+
+void Pointer::pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e)
+{
+    if (!Workspaces::SwipeBegin(e.fingers))
+        LPointer::pointerSwipeBeginEvent(e);
+}
+
+void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
+{
+    if (!Workspaces::SwipeUpdate(e.fingers, e.delta))
+        LPointer::pointerSwipeUpdateEvent(e);
+}
+
+void Pointer::pointerSwipeEndEvent(const CZPointerSwipeEndEvent &e)
+{
+    if (!Workspaces::SwipeEnd(e.cancelled))
+        LPointer::pointerSwipeEndEvent(e);
 }

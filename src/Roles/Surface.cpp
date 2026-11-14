@@ -3,8 +3,10 @@
 #include <Louvre/Seat/LSeat.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
+#include <Effects/TopbarAutoHide.h>
+#include <Core/Workspaces.h>
 
-void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); }
+void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); }
 void Surface::opaqueRegionChanged()     { view.syncOpaqueRegion(); }
 void Surface::invisibleRegionChanged()  { view.syncInvisibleRegion(); }
 void Surface::inputRegionChanged()      { view.syncInputRegion(); }
@@ -20,7 +22,7 @@ void Surface::roleChanged() noexcept
     if (cursorRole())
         view.setParent(nullptr);
     else if (dndIcon())
-        view.setParent(&GetScene()->layers[Scene::Overlay]); // Above everything (e.g. docks)
+        view.setParent(&GetScene()->top); // Above everything (e.g. docks)
 }
 
 void Surface::parentChanged() noexcept
@@ -48,7 +50,7 @@ void Surface::parentChanged() noexcept
         switch (roleId())
         {
         case Role::Toplevel:
-            view.setParent(&GetScene()->layers[layer()]);
+            view.setParent(&GetScene()->containerFor(*this));
             break;
         case Role::Popup:
             view.setParent(nullptr);
@@ -73,6 +75,17 @@ void Surface::mappingChanged()
 
     view.syncVisibility();
 
+    // Layer surfaces: their scope (desktop, shell) is known by now
+    if (!parent() && !dndIcon() && !cursorRole())
+        view.setParent(&GetScene()->containerFor(*this));
+
+    GetCompositor()->restack();
+
+    if (toplevel())
+        Workspaces::Sync(*static_cast<ToplevelRole*>(toplevel()));
+
+    TopbarAutoHide::UpdateAll();
+
     // The desktop appeared/disappeared: it owns the menus while no toplevel is active.
     if ((!seat()->activeToplevel() || GetCompositor()->deskActive()) && Crystals::IsDesk(this))
         GetCompositor()->updateActiveHeavenClient();
@@ -83,7 +96,9 @@ void Surface::raised() noexcept
     if (parent() || dndIcon())
         return;
 
-    view.setParent(&GetScene()->layers[layer()]);
+    view.setParent(&GetScene()->containerFor(*this));
+    GetCompositor()->restack();
+    TopbarAutoHide::UpdateAll(); // The topmost window of an output may have changed
 }
 
 void Surface::layerChanged() noexcept
@@ -91,5 +106,7 @@ void Surface::layerChanged() noexcept
     if (parent() || dndIcon())
         return;
 
-    view.setParent(&GetScene()->layers[layer()]);
+    view.setParent(&GetScene()->containerFor(*this));
+    GetCompositor()->restack();
+    TopbarAutoHide::UpdateAll();
 }

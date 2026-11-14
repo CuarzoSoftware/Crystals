@@ -1,6 +1,9 @@
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/TopbarAutoHide.h>
+#include <Effects/FullscreenAnimation.h>
+#include <Core/Workspaces.h>
 #include <Core/Client.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
@@ -26,6 +29,7 @@ ToplevelRole::ToplevelRole(const void *params) noexcept : LToplevelRole(params) 
 
 ToplevelRole::~ToplevelRole()
 {
+    Workspaces::Removed(*this);
     m_ssd.reset();
 
     if (auto *surf { static_cast<Surface*>(surface()) })
@@ -40,7 +44,8 @@ LToplevelRole::DecorationMode ToplevelRole::wantedDecorationMode() const noexcep
 
 Int32 ToplevelRole::titlebarHeight() const noexcept
 {
-    return m_ssd ? SSDTheme::TitlebarHeight : 0;
+    // Fullscreen: the title bar slides over the content when revealed (see SSD)
+    return m_ssd && !isFullscreen() ? SSDTheme::TitlebarHeight : 0;
 }
 
 Int32 ToplevelRole::pendingTitlebarHeight() const noexcept
@@ -53,7 +58,8 @@ Int32 ToplevelRole::pendingTitlebarHeight() const noexcept
 
 SkIPoint ToplevelRole::rolePos() const
 {
-    return LToplevelRole::rolePos() + SkIPoint::Make(0, titlebarHeight());
+    // Away while its workspace isn't shown (see Workspaces)
+    return LToplevelRole::rolePos() + SkIPoint::Make(0, titlebarHeight()) + Workspaces::ParkOffset(surface());
 }
 
 void ToplevelRole::configureAvailableBounds() noexcept
@@ -115,17 +121,55 @@ void ToplevelRole::preferredDecorationModeChanged()
     }
 }
 
+void ToplevelRole::unsetMaximizedRequest()
+{
+    if (fullscreenLocked())
+        return;
+
+    LToplevelRole::unsetMaximizedRequest();
+}
+
+void ToplevelRole::setMinimizedRequest()
+{
+    if (fullscreenLocked())
+        return;
+
+    LToplevelRole::setMinimizedRequest();
+}
+
 void ToplevelRole::setMaximizedRequest()
 {
+    if (fullscreenLocked())
+        return;
+
     LToplevelRole::setMaximizedRequest();
     configureMaximizedSize();
 }
 
+void ToplevelRole::setFullscreenRequest(LOutput *preferredOutput)
+{
+    LOutput *output { preferredOutput ? preferredOutput : cursor()->output() };
+
+    if (pendingConfiguration().windowState.has(CZWinFullscreen) || !output)
+        return;
+
+    // Snapshot first (as it is), then into its own workspace
+    FullscreenAnimation::Begin(*this, true, output);
+    LToplevelRole::setFullscreenRequest(output);
+    Workspaces::Sync(*this);
+}
+
 void ToplevelRole::unsetFullscreenRequest()
 {
+    if (!pendingConfiguration().windowState.has(CZWinFullscreen))
+        return;
+
+    FullscreenAnimation::Begin(*this, false, exclusiveOutput() ? exclusiveOutput() : cursor()->output());
+
     // Back to maximized (if it was): with the title bar again.
     LToplevelRole::unsetFullscreenRequest();
     configureMaximizedSize();
+    Workspaces::Sync(*this); // Back to the desktop
 }
 
 void ToplevelRole::fitIfYoung() noexcept
@@ -211,20 +255,19 @@ void ToplevelRole::updateDecorations() noexcept
     if (!surf)
         return;
 
-    const bool wanted { decorationMode() == ServerSide && !isFullscreen() };
+    // Fullscreen ones keep them, even client-side decorated ones: the title bar is revealed with the
+    // top bars (see TopbarAutoHide)
+    const bool wanted { decorationMode() == ServerSide || isFullscreen() };
 
     if (wanted && !m_ssd)
-    {
         m_ssd = std::make_unique<SSD>(*this);
-        surf->view.setBottomRadius(SSDTheme::BorderRadius);
-    }
     else if (!wanted && m_ssd)
-    {
         m_ssd.reset();
-        surf->view.setBottomRadius(0);
-    }
     else if (m_ssd)
         m_ssd->update();
+
+    // Square corners while fullscreen
+    surf->view.setBottomRadius(m_ssd && !isFullscreen() ? SSDTheme::BorderRadius : 0);
 
     enforceMinSize();
     surf->view.syncPos();
@@ -266,6 +309,8 @@ void ToplevelRole::minimizedChanged()
         MinimizeAnimation::Start(*this, isMinimized());
 
     surf->view.syncVisibility();
+    Workspaces::Sync(*this);
+    TopbarAutoHide::UpdateAll();
 }
 
 void ToplevelRole::appIdChanged()
@@ -281,6 +326,18 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
 {
     LToplevelRole::stateChanged(changes, prev);
     updateDecorations();
+
+    // (Un)fullscreened: its workspace, and the frame of its new size for the animation
+    if (changes.has(StateChanged) && isFullscreen() != prev.windowState.has(CZWinFullscreen))
+        FullscreenAnimation::StateApplied(*this);
+
+    Workspaces::Sync(*this);
+
+    // Activated in another workspace (e.g. from the dock): show it
+    if (changes.has(StateChanged) && isActivated() && !prev.windowState.has(CZWinActivated))
+        Workspaces::Reveal(*this);
+
+    TopbarAutoHide::UpdateAll(); // (Un)fullscreened: hide/show the top bars of its output
 
     // Young windows that don't fit once decorated (see fitIfYoung()). Once refitted, centered again.
     if (changes.has(DecorationModeChanged | WindowGeometryChanged))

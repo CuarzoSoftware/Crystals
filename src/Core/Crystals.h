@@ -26,6 +26,18 @@ public:
     /// Whether @p surface is (part of) the desktop.
     static bool IsDesk(LSurface *surface) noexcept;
 
+    /// Layer surface scopes of the shell's panels: above every other surface (see Scene).
+    static constexpr const char *ShellScopes[] { "cz-shelf-dock", "cz-shelf-drop", "cz-firmament-topbar" };
+
+    /// Whether @p surface is (part of) a shell panel (a dock, the top bar).
+    static bool IsShell(LSurface *surface) noexcept;
+
+    /**
+     * @brief Keeps Louvre's stacking (used for input) like the scene's: the shell panels at the top
+     *        of the overlay layer, the desktop at the bottom of the background layer.
+     */
+    void restack() noexcept;
+
     /// The client of the desktop (Desk), if running.
     Client *deskClient() const noexcept;
 
@@ -61,6 +73,7 @@ private:
     CZColorScheme m_colorScheme { CZColorScheme::Light };
     std::shared_ptr<CZColorSchemeMonitor> m_colorSchemeMonitor;
     bool m_deskActive { false };
+    bool m_restacking { false };
     void initialized() noexcept override;
     void uninitialized() noexcept override;
     LFactoryObject *createObjectRequest(LFactoryObject::Type objectType, const void *params) override;

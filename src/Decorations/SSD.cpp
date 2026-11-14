@@ -4,6 +4,7 @@
 #include <Roles/Surface.h>
 #include <Scene/SurfaceView.h>
 #include <Core/Crystals.h>
+#include <Effects/TopbarAutoHide.h>
 #include <AK/AKApp.h>
 #include <AK/AKTheme.h>
 #include <Core/CZTime.h>
@@ -145,18 +146,34 @@ void SSD::setTitle(const std::string &title) noexcept
     updateTitle();
 }
 
+Int32 SSD::titlebarY() const noexcept
+{
+    return m_toplevel.isFullscreen() ? TopbarAutoHide::FullscreenTitlebarY(m_toplevel) : -TitlebarHeight;
+}
+
+bool SSD::titlebarShown() const noexcept
+{
+    return !m_toplevel.isFullscreen() || TopbarAutoHide::FullscreenTitlebarShown(m_toplevel);
+}
+
 void SSD::update() noexcept
 {
     const SkISize size { m_toplevel.surface()->size() };
+    const bool fullscreen { m_toplevel.isFullscreen() };
     m_active = m_toplevel.isActivated();
 
-    // The frame: the title bar and the content plus the resize margin around them.
+    // The frame: the title bar and the content (only the title bar while fullscreen) plus the
+    // resize margin around them.
     const Int32 fw { size.width() + 2 * ResizeOutset };
-    const Int32 fh { size.height() + TitlebarHeight + 2 * ResizeOutset };
+    const Int32 fh { (fullscreen ? 0 : size.height()) + TitlebarHeight + 2 * ResizeOutset };
     m_frame.layout().setPosition(YGEdgeLeft, -ResizeOutset);
-    m_frame.layout().setPosition(YGEdgeTop, -TitlebarHeight - ResizeOutset);
+    m_frame.layout().setPosition(YGEdgeTop, titlebarY() - ResizeOutset);
     m_frame.layout().setWidth(fw);
     m_frame.layout().setHeight(fh);
+
+    // Fullscreen: square, and not drawn while hidden (it'd show on an output above)
+    m_titlebar.setBorderRadius(fullscreen ? CZBorderRadius::Make(0) : CZBorderRadius::MakeTB(BorderRadius, 0));
+    m_titlebar.setVisible(titlebarShown());
 
     const auto rects { resizeRects() };
     const bool canResize { resizable() };
@@ -199,7 +216,7 @@ void SSD::update() noexcept
     // is smaller than its corners (a client ignoring the minimum size), they'd overlap.
     const ShadowMargins sm { Margins(m_active) };
     const SkISize min { MinSize() };
-    m_shadow.setVisible(size.width() >= min.width() && size.height() >= min.height());
+    m_shadow.setVisible(!fullscreen && size.width() >= min.width() && size.height() >= min.height());
     m_shadow.setActive(m_active);
     m_shadow.layout().setPosition(YGEdgeLeft, -sm.left);
     m_shadow.layout().setPosition(YGEdgeTop, -TitlebarHeight - sm.top);
@@ -340,10 +357,16 @@ void SSD::buttonClicked(AKWindowButton::Type type) noexcept
         break;
     case AKWindowButton::Minimize:
         setButtonsHover(false);
-        m_toplevel.setMinimized(true);
+        m_toplevel.setMinimizedRequest(); // Rejected while fullscreen
         break;
     case AKWindowButton::Maximize:
         toggleMaximized();
+        break;
+    case AKWindowButton::Fullscreen:
+        m_toplevel.setFullscreenRequest(nullptr);
+        break;
+    case AKWindowButton::UnsetFullscreen:
+        m_toplevel.unsetFullscreenRequest();
         break;
     default:
         break;
@@ -353,6 +376,10 @@ void SSD::buttonClicked(AKWindowButton::Type type) noexcept
 void SSD::titlebarPressed(const CZPointerButtonEvent &e) noexcept
 {
     focus();
+
+    // Fullscreen: neither zoomed nor moved
+    if (m_toplevel.isFullscreen())
+        return;
 
     // Double click: zoom (like macOS).
     const UInt32 now { CZTime::Ms() };
@@ -367,9 +394,6 @@ void SSD::titlebarPressed(const CZPointerButtonEvent &e) noexcept
     m_lastTitlebarPressMs = now;
 
     // Drag: move, the title bar kept below the top of the output's available area (the top bar).
-    if (m_toplevel.isFullscreen())
-        return;
-
     if (m_toplevel.moveSession().start(e, CursorPos()))
     {
         if (LOutput *output { CZ::cursor()->output() })
@@ -414,15 +438,37 @@ void SSD::setButtonsHover(bool hover) noexcept
     updateButtons();
 }
 
+static bool AltPressed() noexcept
+{
+    return seat()->keyboard()->isKeyCodePressed(KEY_LEFTALT) || seat()->keyboard()->isKeyCodePressed(KEY_RIGHTALT);
+}
+
+void SSD::KeyEvent(UInt32 keyCode) noexcept
+{
+    if (keyCode != KEY_LEFTALT && keyCode != KEY_RIGHTALT)
+        return;
+
+    for (Surface *surface : GetSurfaces())
+        if (auto *toplevel { static_cast<ToplevelRole*>(surface->toplevel()) }; toplevel && toplevel->ssd())
+            toplevel->ssd()->updateButtons();
+}
+
 void SSD::updateButtons() noexcept
 {
+    // Green: fullscreen (maximize while Alt is held), exit fullscreen while fullscreen
+    const bool fullscreen { m_toplevel.isFullscreen() };
+    m_maximize.setType(fullscreen ? AKWindowButton::UnsetFullscreen :
+                       AltPressed() ? AKWindowButton::Maximize : AKWindowButton::Fullscreen);
+
     // Like macOS: colored while the window is active, gray otherwise; hovering the group shows the
     // symbols (colored even if inactive); the pressed button looks pressed while the cursor is on it.
     for (AKWindowButton *b : { &m_close, &m_minimize, &m_maximize })
     {
         AKWindowButton::State state { m_active ? AKWindowButton::Normal : AKWindowButton::Disabled };
 
-        if (b == s_pressedButton && s_pressedInside)
+        if (b == &m_minimize && fullscreen)
+            state = AKWindowButton::Disabled; // Can't minimize a fullscreen window
+        else if (b == s_pressedButton && s_pressedInside)
             state = AKWindowButton::Pressed;
         else if (m_buttonsHover)
             state = AKWindowButton::Hover;
@@ -436,14 +482,19 @@ void SSD::updateButtons() noexcept
 SSD::Hit SSD::hitTest(SkIPoint pos) const noexcept
 {
     Hit hit;
+
+    if (!titlebarShown())
+        return hit;
+
     const SkISize size { m_toplevel.surface()->size() };
     const SkIPoint content { m_toplevel.rolePos() };
+    const Int32 contentHeight { m_toplevel.isFullscreen() ? 0 : size.height() }; // Fullscreen: only the title bar
 
     // In frame coordinates.
     const Int32 x { pos.x() - (content.x() - ResizeOutset) };
-    const Int32 y { pos.y() - (content.y() - TitlebarHeight - ResizeOutset) };
+    const Int32 y { pos.y() - (content.y() + titlebarY() - ResizeOutset) };
 
-    if (!SkIRect::MakeWH(size.width() + 2 * ResizeOutset, size.height() + TitlebarHeight + 2 * ResizeOutset).contains(x, y))
+    if (!SkIRect::MakeWH(size.width() + 2 * ResizeOutset, contentHeight + TitlebarHeight + 2 * ResizeOutset).contains(x, y))
         return hit;
 
     // The resize areas are above the title bar (the corners overlap its rounded corners).
@@ -491,35 +542,79 @@ SSD::Hit SSD::hitTest(SkIPoint pos) const noexcept
     return hit;
 }
 
+// The window (or layer surface) a surface is part of: itself, or the closest one up its popups and
+// subsurfaces.
+static const LSurface *OwnerOf(const LSurface *surface) noexcept
+{
+    while (surface && surface->parent() && (surface->popup() || surface->subsurface()))
+        surface = surface->parent();
+
+    return surface;
+}
+
+// Walks a window tree top-down like LSeat::surfaceAt() (child windows above it). Returns `true` once
+// decided: @p hit set (its decorations) or empty (@p target, the surface under the pointer, is
+// part of it).
+static bool HitTree(LSurface *root, const LSurface *target, SkIPoint p, SSD::Hit &hit) noexcept
+{
+    if (!root->mapped())
+        return false;
+
+    auto *toplevel { static_cast<ToplevelRole*>(root->toplevel()) };
+
+    if (toplevel)
+    {
+        if (toplevel->isMinimized())
+            return false;
+
+        const auto &children { toplevel->childToplevels() };
+
+        for (auto it = children.rbegin(); it != children.rend(); it++)
+            if (HitTree((*it)->surface(), target, p, hit))
+                return true;
+
+        if (toplevel->ssd())
+        {
+            const SSD::Hit h { SSD::HitAt(*toplevel->ssd(), p) };
+
+            // Over its own content (or its popups/subsurfaces) only its resize corners count (they
+            // reach inwards), and the title bar of fullscreen windows (it slides over the content).
+            if (h.ssd && (OwnerOf(target) != root || h.part == SSD::Hit::Resize || toplevel->isFullscreen()))
+            {
+                hit = h;
+                return true;
+            }
+        }
+    }
+
+    if (OwnerOf(target) == root)
+    {
+        hit = {};
+        return true;
+    }
+
+    return false;
+}
+
+SSD::Hit SSD::HitAt(SSD &ssd, SkIPoint pos) noexcept
+{
+    return ssd.hitTest(pos);
+}
+
 SSD::Hit SSD::HitAt(const SkPoint &pos) noexcept
 {
     const SkIPoint p { Int32(SkScalarFloorToInt(pos.x())), Int32(SkScalarFloorToInt(pos.y())) };
 
-    // The topmost surface Louvre would give the pointer to. Walking the stacking order top-down, the
+    // The topmost surface Louvre would give the pointer to. Walking the stacking order top-down (the
+    // windows, not Louvre's raw lists: children aren't moved with their raised parent there), the
     // first of it or some decorations containing the point wins.
-    LSurface *surface { seat()->surfaceAt(p) };
+    const LSurface *surface { seat()->surfaceAt(p) };
+    Hit hit;
 
     for (auto L = compositor()->layers().rbegin(); L != compositor()->layers().rend(); L++)
-    {
         for (auto S = L->rbegin(); S != L->rend(); S++)
-        {
-            LSurface *s { *S };
-            auto *toplevel { static_cast<ToplevelRole*>(s->toplevel()) };
-            const bool decorated { toplevel && toplevel->ssd() && s->mapped() && !toplevel->isMinimized() };
-
-            if (decorated)
-            {
-                const Hit hit { toplevel->ssd()->hitTest(p) };
-
-                // Over its own content only its resize corners count (they reach inwards).
-                if (hit.ssd && (s != surface || hit.part == Hit::Resize))
-                    return hit;
-            }
-
-            if (s == surface)
-                return {};
-        }
-    }
+            if (!(*S)->parent() && (*S)->roleId() >= LSurface::Role::Toplevel && HitTree(*S, surface, p, hit))
+                return hit;
 
     return {};
 }
@@ -609,7 +704,7 @@ bool SSD::PointerButton(const Hit &hit, const CZPointerButtonEvent &e) noexcept
     switch (hit.part)
     {
     case Hit::Buttons:
-        if (hit.button)
+        if (hit.button && !(hit.button->type() == AKWindowButton::Minimize && hit.ssd->m_toplevel.isFullscreen()))
         {
             s_pressedSSD = hit.ssd;
             s_pressedButton = hit.button;

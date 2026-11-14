@@ -1,6 +1,8 @@
 #include <Effects/MinimizeAnimation.h>
 #include <Roles/Surface.h>
 #include <Roles/ToplevelRole.h>
+#include <Decorations/SSD.h>
+#include <Decorations/SSDTheme.h>
 #include <Scene/Scene.h>
 #include <Seat/Output.h>
 #include <AK/AKScene.h>
@@ -121,8 +123,8 @@ MinimizeAnimation::MinimizeAnimation(LToplevelRole &toplevel, bool minimizing) n
     m_node.enableAutoDamage(true);
     m_node.layout().setPositionType(YGPositionTypeAbsolute);
 
-    // Above everything else (layers included).
-    m_node.setParent(&GetScene()->root);
+    // Above every window, below the dock (and the rest of the shell).
+    m_node.setParent(&GetScene()->animations);
 
     compositor()->repaintAllOutputs();
 }
@@ -182,11 +184,25 @@ bool MinimizeAnimation::bake(Output &output) noexcept
         return false;
 
     auto *surface { static_cast<Surface*>(m_toplevel->surface()) };
-    const Int32 titlebar { static_cast<ToplevelRole*>(m_toplevel.get())->titlebarHeight() };
-    const SkISize size { surface->size().width(), surface->size().height() + titlebar };
+    auto *toplevel { static_cast<ToplevelRole*>(m_toplevel.get()) };
+    const Int32 titlebar { toplevel->titlebarHeight() };
 
     if (surface->size().isEmpty() || !surface->image())
         return false;
+
+    // The decorations' shadow too (when shown, see SSD::update())
+    m_margins.setEmpty();
+    const SkISize min { SSD::MinSize() };
+
+    if (toplevel->ssd() && !toplevel->isFullscreen() &&
+        surface->size().width() >= min.width() && surface->size().height() >= min.height())
+    {
+        const auto sm { SSDTheme::Margins(toplevel->isActivated()) };
+        m_margins = SkIRect::MakeLTRB(sm.left, sm.top, sm.right, sm.bottom);
+    }
+
+    const SkISize size { surface->size().width() + m_margins.left() + m_margins.right(),
+                         surface->size().height() + titlebar + m_margins.top() + m_margins.bottom() };
 
     auto &aux { Aux() };
     SurfaceView &view { surface->view };
@@ -203,10 +219,10 @@ bool MinimizeAnimation::bake(Output &output) noexcept
     view.toplevels.setVisible(false);
     view.setVisible(true);
     view.setParent(&aux.root);
-    view.layout().setPosition(YGEdgeLeft, 0.f);
-    view.layout().setPosition(YGEdgeTop, titlebar);
+    view.layout().setPosition(YGEdgeLeft, m_margins.left());
+    view.layout().setPosition(YGEdgeTop, titlebar + m_margins.top());
 
-    // The target is exactly the window (title bar + surface): whatever falls outside is clipped.
+    // The target is exactly the window (title bar + surface) and its shadow: the rest is clipped.
     aux.root.layout().setWidth(size.width());
     aux.root.layout().setHeight(size.height());
 
@@ -268,10 +284,12 @@ void MinimizeAnimation::update(Float64 t) noexcept
         from.right() + (to.right() - from.right()) * e,
         from.bottom() + (to.bottom() - from.bottom()) * e) };
 
-    m_node.layout().setPosition(YGEdgeLeft, r.x());
-    m_node.layout().setPosition(YGEdgeTop, r.y());
-    m_node.layout().setWidth(std::max(1.f, r.width()));
-    m_node.layout().setHeight(std::max(1.f, r.height()));
+    // The shadow around it, scaled with it (the image is scaled uniformly)
+    const SkScalar s { r.width() / std::max(1.f, from.width()) };
+    m_node.layout().setPosition(YGEdgeLeft, r.x() - m_margins.left() * s);
+    m_node.layout().setPosition(YGEdgeTop, r.y() - m_margins.top() * s);
+    m_node.layout().setWidth(std::max(1.f, r.width() + (m_margins.left() + m_margins.right()) * s));
+    m_node.layout().setHeight(std::max(1.f, r.height() + (m_margins.top() + m_margins.bottom()) * s));
 
     // Fades out over the second half, as it lands on the dock item.
     m_node.setOpacity(std::clamp(SkScalar(2.0 - 2.0 * p), 0.f, 1.f));

@@ -30,8 +30,12 @@
  * PointerButton() directly (synchronously, the events never reach the client):
  * - Title bar: a press activates the window, a drag moves it, a double click toggles maximized.
  * - Traffic lights: hovering the group shows their symbols, a click (press and release on the same
- *   button) closes, minimizes or toggles maximized.
+ *   button) closes, minimizes or (the green one) makes it fullscreen, or toggles maximized while Alt
+ *   is held (like macOS). Fullscreen: the green one exits fullscreen and minimizing is disabled.
  * - Resize areas (each corner and edge): a press starts resizing from that corner/edge.
+ *
+ * Fullscreen: only the title bar, square and without shadow, hidden above the content. It slides
+ * down over the content, right below the top bars, when they're revealed (see TopbarAutoHide).
  */
 class SSD final : public CZObject
 {
@@ -78,6 +82,9 @@ public:
      */
     static Hit HitAt(const SkPoint &pos) noexcept;
 
+    /// What of @p ssd is at @p pos (global), ignoring stacking.
+    static Hit HitAt(SSD &ssd, SkIPoint pos) noexcept;
+
     /**
      * @brief The pointer moved, now over @p hit.
      *
@@ -95,7 +102,16 @@ public:
     /// Whether a window button is held down (it holds the pointer until released).
     static bool ButtonPressed() noexcept;
 
+    /// A key was pressed/released: Alt switches the green buttons between fullscreen and maximize.
+    static void KeyEvent(UInt32 keyCode) noexcept;
+
 private:
+    /// Top of the title bar relative to the content's top (above it, or over it while fullscreen).
+    Int32 titlebarY() const noexcept;
+
+    /// Whether the title bar is on screen (always, unless fullscreen and hidden).
+    bool titlebarShown() const noexcept;
+
     class Shadow final : public AKNinePatch
     {
     public:

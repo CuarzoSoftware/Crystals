@@ -19,6 +19,7 @@
 #include <Roles/Surface.h>
 #include <Roles/SubsurfaceRole.h>
 #include <Roles/ToplevelRole.h>
+#include <Roles/LayerRole.h>
 #include <Decorations/SSDTheme.h>
 #include <Decorations/SSD.h>
 
@@ -31,6 +32,8 @@
 
 #include <Effects/SurfaceBlurManager.h>
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/FullscreenAnimation.h>
+#include <Core/Workspaces.h>
 
 #include <RResourceTracker.h>
 
@@ -100,7 +103,11 @@ void Crystals::initialized() noexcept
         heaven->onToggleActiveClientMinimized.subscribe(this, [this](){
             if (auto *tl = seat()->activeToplevel())
             {
-                tl->setMinimized(!tl->isMinimized());
+                // Through the request: rejected while fullscreen (see ToplevelRole)
+                if (tl->isMinimized())
+                    tl->setMinimized(false);
+                else
+                    tl->setMinimizedRequest();
             }
         });
     }
@@ -115,6 +122,68 @@ bool Crystals::IsDesk(LSurface *surface) noexcept
         surface = surface->topmostParent();
 
     return surface->layerRole() && surface->layerRole()->scope() == DeskScope;
+}
+
+bool Crystals::IsShell(LSurface *surface) noexcept
+{
+    if (!surface)
+        return false;
+
+    if (surface->parent())
+        surface = surface->topmostParent();
+
+    if (!surface->layerRole())
+        return false;
+
+    for (const char *scope : ShellScopes)
+        if (surface->layerRole()->scope() == scope)
+            return true;
+
+    return false;
+}
+
+void Crystals::restack() noexcept
+{
+    // raise() calls Surface::raised(), which calls this again
+    if (m_restacking)
+        return;
+
+    m_restacking = true;
+
+    // Raises (in their current order) the parentless surfaces of a layer for which @p pred holds,
+    // unless they're already above the rest.
+    const auto raiseAll = [this](LSurfaceLayer layer, auto pred)
+    {
+        const std::list<LSurface*> list { layers()[layer] };
+        bool seen { false }, ordered { true };
+
+        for (LSurface *s : list)
+        {
+            if (s->parent())
+                continue;
+
+            if (pred(s))
+                seen = true;
+            else if (seen)
+            {
+                ordered = false;
+                break;
+            }
+        }
+
+        if (ordered)
+            return;
+
+        for (LSurface *s : list)
+            if (!s->parent() && pred(s))
+                s->raise();
+    };
+
+    // The shell above the rest of the overlay layer, the rest of the background layer above the desktop
+    raiseAll(LLayerOverlay, [](LSurface *s){ return IsShell(s); });
+    raiseAll(LLayerBackground, [](LSurface *s){ return !IsDesk(s); });
+
+    m_restacking = false;
 }
 
 Client *Crystals::deskClient() const noexcept
@@ -163,6 +232,8 @@ void Crystals::uninitialized() noexcept
     Volume::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
+    FullscreenAnimation::Clear();
+    Workspaces::Clear();
     DNDReturnAnimation::Clear();
     SSDTheme::Clear();
 }
@@ -179,6 +250,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new SubsurfaceRole(params);
     case LFactoryObject::Type::LToplevelRole:
         return new ToplevelRole(params);
+    case LFactoryObject::Type::LLayerRole:
+        return new LayerRole(params);
     case LFactoryObject::Type::LOutput:
         return new Output(params);
     case LFactoryObject::Type::LSeat:

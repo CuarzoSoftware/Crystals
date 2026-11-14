@@ -7,6 +7,9 @@
 #include <Core/CZObject.h>
 #include <Scene/Scene.h>
 #include <Core/CZSpringAnimation.h>
+#include <Effects/TopbarAutoHide.h>
+#include <Core/Workspaces.h>
+#include <memory>
 
 class Output final : public LOutput
 {
@@ -38,6 +41,12 @@ public:
     void updateCapturedBlurs() noexcept;
 
     std::unique_ptr<Resources> res;
+
+    /// Hides the top bars while showing a fullscreen window (created by TopbarAutoHide::UpdateAll()).
+    std::unique_ptr<TopbarAutoHide> autoHide;
+
+    /// Its workspaces (created by Workspaces::Of()).
+    std::unique_ptr<Workspaces> workspaces;
 };
 
 #endif // OUTPUT_H

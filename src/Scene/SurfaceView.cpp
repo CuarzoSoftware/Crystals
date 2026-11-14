@@ -3,6 +3,9 @@
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/TopbarAutoHide.h>
+#include <Effects/FullscreenAnimation.h>
+#include <Core/Workspaces.h>
 #include <Louvre/Roles/LPopupRole.h>
 #include <Decorations/SSDTheme.h>
 #include <algorithm>
@@ -126,9 +129,10 @@ void SurfaceView::syncPos() noexcept
     if (surface.subsurface())
         return;
 
-    const auto &rolePos { surface.rolePos() };
-    layout().setPosition(YGEdgeLeft, rolePos.x());
-    layout().setPosition(YGEdgeTop, rolePos.y());
+    // Where its workspace is (sliding, or parked away while not shown: see Workspaces)
+    const SkIPoint pos { surface.rolePos() + Workspaces::ViewOffset(&surface) };
+    layout().setPosition(YGEdgeLeft, pos.x());
+    layout().setPosition(YGEdgeTop, pos.y());
 }
 
 void SurfaceView::syncSize() noexcept
@@ -239,5 +243,8 @@ void SurfaceView::syncVisibility() noexcept
         surface.mapped() &&
         !surface.cursorRole() &&
         !isMinimized &&
-        !MinimizeAnimation::HidesSurface(&surface)); // Unminimizing: the animation shows it
+        !MinimizeAnimation::HidesSurface(&surface) && // Unminimizing: the animation shows it
+        !TopbarAutoHide::HidesSurface(&surface) &&    // A top bar hidden by a fullscreen window
+        !Workspaces::HidesSurface(&surface) &&        // Its workspace is out of view
+        !FullscreenAnimation::HidesSurface(&surface)); // Entering/leaving fullscreen: the animation shows it
 }

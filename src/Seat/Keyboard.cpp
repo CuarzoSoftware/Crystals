@@ -8,6 +8,8 @@
 #include <Louvre/Cursor/LCursor.h>
 #include <Louvre/Seat/LOutput.h>
 #include <AK/AKApp.h>
+#include <Decorations/SSD.h>
+#include <Core/Workspaces.h>
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {
@@ -15,7 +17,12 @@ void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
     if (Volume::Get().keyEvent(e.code, e.isPressed))
         return;
 
+    // Ctrl+Super+Left/Right: switch workspaces, never sent to clients
+    if (Workspaces::KeyEvent(e))
+        return;
+
     LKeyboard::keyEvent(e);
+    SSD::KeyEvent(e.code); // Alt: the green buttons maximize instead
 
     if (isKeyCodePressed(KEY_LEFTMETA) && e.code == KEY_M && e.isPressed == false && cursor()->output())
     {

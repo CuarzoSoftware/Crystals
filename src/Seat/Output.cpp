@@ -10,16 +10,18 @@
 #include <Core/CaptureManager.h>
 #include <Scene/Scene.h>
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/FullscreenAnimation.h>
+#include <Core/Workspaces.h>
+#include <Effects/TopbarAutoHide.h>
 #include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
 
 Output::Resources::Resources(Output &output) noexcept : output(output)
 {
     auto *scene { GetScene() };
-    scene->layers[LLayerOverlay].enableChildrenClipping(false);
 
     target = scene->scene->makeTarget();
-    target->setClearColor(0xFF90e0ef);
+    target->setClearColor(SK_ColorBLACK);
     target->userData = &output;
 
     target->onMarkedDirty.subscribe(this, [this](auto &){
@@ -39,8 +41,12 @@ void Output::paintGL()
     auto core { CZCore::Get() };
     core->updateAnimations();
 
+    // Content of outputs switching workspaces is only drawn on them
+    Workspaces::BeginRender(this);
+
     res->ignoreKayRepaintCalls = true;
     syncSurfaceViews();
+    TopbarAutoHide::SyncMirrors(this);
     res->ignoreKayRepaintCalls = false;
 
     // Bake (un)minimizing toplevels (needs this thread's GL context) before rendering.
@@ -63,6 +69,7 @@ void Output::paintGL()
     // (empty while oversampling, Louvre restores it then).
     target->inDamage = &softwareCursorDamage();
     GetScene()->scene->render(target);
+    Workspaces::EndRender();
 
     handleSurfaceCallbacks();
     updateCapturedBlurs();
@@ -161,11 +168,16 @@ void Output::handleSurfaceCallbacks() noexcept
         // the client waits for them forever and stops updating (e.g. a dock animation stalling).
         const bool idleCommit { !surface->hasDamage() && surface->view.visible() && !surface->view.intersectedTargets().empty() };
 
-        if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole())
+        // Drawn by a fullscreen animation: it keeps drawing (its new size is awaited)
+        if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole() || FullscreenAnimation::WantsFrames(surface))
         {
             surface->view.view.clearRenderedOnLastTarget();
             surface->requestNextFrame();
         }
+
+        // Hidden top bars (see TopbarAutoHide) stay on their output (e.g. keeping their scale)
+        if (TopbarAutoHide::HidesSurface(surface) || Workspaces::IsParked(surface) || FullscreenAnimation::HidesSurface(surface))
+            continue;
 
         bool outputFound;
 

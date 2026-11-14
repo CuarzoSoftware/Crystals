@@ -2,6 +2,8 @@
 #include <Core/Events/CZPointerEnterEvent.h>
 #include <Core/CZCore.h>
 #include <Scene/Scene.h>
+#include <Core/Crystals.h>
+#include <Louvre/Roles/LSurface.h>
 
 Scene::Scene() noexcept
 {
@@ -13,13 +15,38 @@ Scene::Scene() noexcept
     const SkRegion empty;
     root.setInputRegion(&empty);
 
+    std::vector<AKContainer*> containers { &desktop, &backdrops };
+
     for (auto &layer : layers)
+        containers.push_back(&layer);
+
+    containers.insert(containers.end(), { &animations, &shell, &top });
+
+    for (AKContainer *container : containers)
     {
-        layer.setParent(&root);
-        layer.setInputRegion(&empty);
+        container->setParent(&root);
+        container->setInputRegion(&empty);
     }
+
+    // Their surfaces (or animations) may be anywhere
+    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &top })
+        container->enableChildrenClipping(false);
 
     auto core { CZCore::Get() };
     core->sendEvent(CZPointerEnterEvent(), *scene);
     core->sendEvent(CZKeyboardEnterEvent(), *scene);
+}
+
+AKContainer &Scene::containerFor(LSurface &surface) noexcept
+{
+    if (surface.dndIcon())
+        return top;
+
+    if (Crystals::IsDesk(&surface))
+        return desktop;
+
+    if (Crystals::IsShell(&surface))
+        return shell;
+
+    return layers[surface.layer()];
 }

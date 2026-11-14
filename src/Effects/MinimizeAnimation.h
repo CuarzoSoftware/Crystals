@@ -12,7 +12,7 @@ class Output;
 /**
  * @brief Minimize / unminimize animation of a toplevel.
  *
- * The toplevel (with its subsurfaces, clipped to the toplevel surface) is baked into an image using
+ * The toplevel (with its subsurfaces and decorations, shadow included) is baked into an image using
  * an auxiliary AKScene. That image is then shown by an AKImage node that moves and shrinks from the
  * window to the spot where it's docked (or grows back from it when unminimizing) and fades out (in).
  *
@@ -52,6 +52,7 @@ private:
     bool m_finished { false };
     SkRect m_window {};     // Captured when it starts
     SkRect m_lastDock {};   // Last known dock rect (kept if the dock goes away)
+    SkIRect m_margins {};   // The decorations' shadow around the window in the image (LTRB)
     AKImage m_node;
     CZLinearAnimation m_anim;
 };

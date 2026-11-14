@@ -12,7 +12,8 @@ class SSD;
  * Server-side decorations (SSD): toplevels get them unless they prefer drawing their own
  * (xdg-decoration). Then the surface position (LSurface::pos()) is the top-left of the whole window,
  * title bar included, and the content sits right below the title bar (rolePos()). Fullscreen
- * toplevels show no decorations.
+ * toplevels only get a title bar revealed over their content on hover (see SSD), client-side
+ * decorated ones too.
  */
 class ToplevelRole : public LToplevelRole
 {
@@ -43,7 +44,11 @@ public:
     SkIPoint rolePos() const override;
     void configureRequest() override;
     void preferredDecorationModeChanged() override;
+    // Rejected while fullscreen (or about to be), whoever asks: the client, a dock, the menus...
     void setMaximizedRequest() override;
+    void unsetMaximizedRequest() override;
+    void setMinimizedRequest() override;
+    void setFullscreenRequest(LOutput *preferredOutput) override;
     void unsetFullscreenRequest() override;
     void titleChanged() override;
     void minimizedChanged() override;
@@ -55,6 +60,7 @@ public:
 
 private:
     DecorationMode wantedDecorationMode() const noexcept;
+    bool fullscreenLocked() const noexcept { return pendingConfiguration().windowState.has(CZWinFullscreen); }
 
     /// Sends the maximized size (the available area minus the title bar) if maximizing/maximized.
     void configureMaximizedSize() noexcept;

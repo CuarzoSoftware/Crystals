@@ -17,7 +17,8 @@ class Output;
  * window to the spot where it's docked (or grows back from it when unminimizing) and fades out (in).
  *
  * The spot is the rect set by a taskbar/dock through wlr-foreign-toplevel-management
- * (set_rectangle), read every frame so the dock may still be moving/growing its item. Without one,
+ * (set_rectangle), read every frame so the dock may still be moving/growing its item. With a dock
+ * on each screen, the one of the screen the cursor was on when it started. Without one,
  * the window shrinks towards the bottom center of its output.
  */
 class MinimizeAnimation final : public CZObject
@@ -52,6 +53,7 @@ private:
     bool m_finished { false };
     SkRect m_window {};     // Captured when it starts
     SkRect m_lastDock {};   // Last known dock rect (kept if the dock goes away)
+    const LOutput *m_dockOutput { nullptr }; // Where the cursor was when it started: that screen's dock
     SkIRect m_margins {};   // The decorations' shadow around the window in the image (LTRB)
     AKImage m_node;
     CZLinearAnimation m_anim;

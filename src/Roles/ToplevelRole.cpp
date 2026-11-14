@@ -162,10 +162,16 @@ void ToplevelRole::setFullscreenRequest(LOutput *preferredOutput)
 
 void ToplevelRole::unsetFullscreenRequest()
 {
+    leaveFullscreen(true);
+}
+
+void ToplevelRole::leaveFullscreen(bool animated) noexcept
+{
     if (!pendingConfiguration().windowState.has(CZWinFullscreen))
         return;
 
-    FullscreenAnimation::Begin(*this, false, exclusiveOutput() ? exclusiveOutput() : cursor()->output());
+    if (animated)
+        FullscreenAnimation::Begin(*this, false, exclusiveOutput() ? exclusiveOutput() : cursor()->output());
 
     // Back to maximized (if it was): with the title bar again.
     LToplevelRole::unsetFullscreenRequest();
@@ -306,7 +312,8 @@ void ToplevelRole::minimizedChanged()
 
     auto *surf { static_cast<Surface*>(surface()) };
 
-    if (surf->mapped())
+    // Not while Exposé is shown: right away (it rebuilds its layout)
+    if (surf->mapped() && !Expose::Active())
         MinimizeAnimation::Start(*this, isMinimized());
 
     surf->view.syncVisibility();
@@ -333,6 +340,7 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
     if (changes.has(StateChanged) && isFullscreen() != prev.windowState.has(CZWinFullscreen))
     {
         FullscreenAnimation::StateApplied(*this);
+        Expose::WindowsChanged(); // Into/out of the desktop's layout
         static_cast<Surface*>(surface())->view.syncOpaqueRegion(); // Fully opaque while fullscreen
     }
 

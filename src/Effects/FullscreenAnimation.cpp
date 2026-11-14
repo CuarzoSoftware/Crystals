@@ -153,12 +153,16 @@ void FullscreenAnimation::update() noexcept
         return;
 
     const Int64 ms { Int64(m_anim.value() * TimeoutMs) };
-    // The workspace slide's curve (a critically damped spring from rest, see Workspaces):
-    // x(t) = 1 - (1 + wt)e^(-wt), w as in CZSpringAnimation. Done at 99.5%, like the slide visually.
+    // The workspace slide's curve (its spring from rest, see Workspaces), w as in CZSpringAnimation.
+    // Underdamped from rest (see Workspaces::SpringDamping): x(t) = 1 - e^(-zwt)(cos(wd t) + z/sqrt(1-z^2) sin(wd t))
     const Float64 w { std::sqrt(Workspaces::FullscreenStiffness * 0.01) };
-    const Int64 durationMs { Int64(1000.0 * 7.4 / w) }; // x(7.4/w) ~ 0.995
+    const Float64 z { Workspaces::SpringDamping };
+    const Float64 root { std::sqrt(1.0 - z * z) };
+    const Float64 wd { w * root };
+    const Int64 durationMs { Int64(1000.0 * 6.6 / (z * w)) }; // Within ~0.3% (the envelope)
     const Float64 secs { Float64(ms) * 0.001 };
-    const Float64 x { ms >= durationMs ? 1.0 : 1.0 - (1.0 + w * secs) * std::exp(-w * secs) };
+    const Float64 x { ms >= durationMs ? 1.0 :
+                      1.0 - std::exp(-z * w * secs) * (std::cos(wd * secs) + (z / root) * std::sin(wd * secs)) };
     const SkScalar t { SkScalar(x) };
     const SkRect r { Lerp(m_from, targetRect(), t) };
 

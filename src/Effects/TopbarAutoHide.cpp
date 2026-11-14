@@ -326,7 +326,7 @@ void TopbarAutoHide::SyncMirrors(LOutput *rendering) noexcept
 
         // Where the bars are shown but not with their own view (it's in the workspace the user is in):
         // - A fullscreen workspace left with them revealed, while it slides away (as they were).
-        // - Otherwise the desktop, while sliding away from a fullscreen workspace.
+        // - Otherwise a desktop in view other than the current workspace (its own view is there).
         const Workspaces *ws { static_cast<Output*>(output)->workspaces.get() };
         size_t index { 0 };
         Int32 dy { 0 };
@@ -339,10 +339,18 @@ void TopbarAutoHide::SyncMirrors(LOutput *rendering) noexcept
                 dy = -autoHide->slideFor(autoHide->m_leavingProgress, left);
                 show = true;
             }
-            else if (ws->current() != 0)
+            else
             {
-                index = 0;
-                show = true;
+                // The workspaces in view (at most two)
+                const size_t a { size_t(std::max(0.0, std::floor(ws->pos()))) };
+
+                for (size_t i : { a, a + 1 })
+                    if (i != ws->current() && ws->isDesktop(i))
+                    {
+                        index = i;
+                        show = true;
+                        break;
+                    }
             }
 
             show = show && std::abs(Float64(index) - ws->pos()) < 0.999 && rendering == output;

@@ -24,6 +24,10 @@ public:
     /// The decorations, if shown.
     SSD *ssd() const noexcept { return m_ssd.get(); }
 
+    /// The desktop workspace it belongs to (see Workspaces): 0 until assigned. Kept while
+    /// fullscreen (it goes back there).
+    UInt32 desktopId { 0 };
+
     /// Creates/destroys/re-lays out the decorations (mode, state or size changed).
     void updateDecorations() noexcept;
 
@@ -50,6 +54,9 @@ public:
     void setMinimizedRequest() override;
     void setFullscreenRequest(LOutput *preferredOutput) override;
     void unsetFullscreenRequest() override;
+
+    /// Leaves fullscreen (back to the desktop workspace), optionally without FullscreenAnimation.
+    void leaveFullscreen(bool animated) noexcept;
     void titleChanged() override;
     void minimizedChanged() override;
     void appIdChanged() override;

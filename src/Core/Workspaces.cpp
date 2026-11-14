@@ -6,6 +6,7 @@
 #include <Seat/Output.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Effects/Expose.h>
+#include <Effects/Snapshot.h>
 #include <Louvre/LCompositor.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
@@ -28,7 +29,7 @@ static Workspaces *Existing(const LOutput *output) noexcept
 
 Workspaces::Workspaces(Output &output) noexcept :
     m_output(output),
-    m_spring(0.0, 0.0, 0.0, SpringStiffness, CZSpringAnimation::DampingRatioNoBouncy,
+    m_spring(0.0, 0.0, 0.0, SpringStiffness, SpringDamping,
         [this](CZAnimation *a)
         {
             m_pos = a->value();
@@ -41,7 +42,7 @@ Workspaces::Workspaces(Output &output) noexcept :
             onPosChanged();
         })
 {
-    insert(0, nullptr); // The desktop
+    insert(0, nullptr); // The first desktop
 }
 
 Workspaces::~Workspaces()
@@ -126,8 +127,22 @@ Workspaces *Workspaces::Find(const LSurface *surface, size_t *index) noexcept
             }
         }
 
-        if (index) *index = 0;
-        return Existing(best);
+        // Its desktop there (assigned when first seen, or when its desktop is gone or on another output)
+        Workspaces *ws { Existing(best) };
+
+        if (!ws)
+            return nullptr;
+
+        size_t desktop { ws->desktopIndex(toplevel->desktopId) };
+
+        if (desktop == SIZE_MAX)
+        {
+            toplevel->desktopId = ws->defaultDesktop();
+            desktop = ws->desktopIndex(toplevel->desktopId);
+        }
+
+        if (index) *index = desktop == SIZE_MAX ? 0 : desktop;
+        return ws;
     }
 
     // Top bars: in the workspace the user is in (their menus too)
@@ -141,10 +156,15 @@ Workspaces *Workspaces::Find(const LSurface *surface, size_t *index) noexcept
         return ws;
     }
 
+    // The desktop: on the current desktop, or the last one shown
     if (Crystals::IsDesk(const_cast<LSurface*>(root)) && root->layerRole())
     {
-        if (index) *index = 0;
-        return Existing(root->layerRole()->exclusiveOutput());
+        Workspaces *ws { Existing(root->layerRole()->exclusiveOutput()) };
+
+        if (ws && index)
+            *index = ws->deskIndex();
+
+        return ws;
     }
 
     return nullptr;
@@ -202,15 +222,28 @@ Workspaces::Space &Workspaces::insert(size_t index, ToplevelRole *toplevel) noex
 {
     auto space { std::make_unique<Space>() };
     space->toplevel.reset(toplevel);
+    const SkRegion empty;
 
     if (toplevel)
     {
         // Black behind the fullscreen window
         space->backdrop = std::make_unique<AKSolidColor>(CZAdaptiveColor(SK_ColorBLACK), &GetScene()->backdrops);
-        space->backdrop->layout().setPositionType(YGPositionTypeAbsolute);
-        const SkRegion empty;
-        space->backdrop->setInputRegion(&empty);
     }
+    else
+    {
+        // A desktop: the desktop's snapshot, where it isn't drawn (see onPosChanged())
+        space->desktopId = m_nextDesktopId++;
+        auto image { std::make_unique<AKImage>(&GetScene()->backdrops) };
+        space->deskImage = image.get();
+        image->enableAutoDamage(true);
+        space->backdrop = std::move(image);
+
+        if (m_lastDesktopId == 0)
+            m_lastDesktopId = space->desktopId;
+    }
+
+    space->backdrop->layout().setPositionType(YGPositionTypeAbsolute);
+    space->backdrop->setInputRegion(&empty);
 
     index = std::min(index, m_spaces.size());
     Space &ref { *space };
@@ -241,15 +274,27 @@ void Workspaces::close(size_t index, Int64 target, Float64 stiffness) noexcept
     m_spaces[index]->toplevel.reset();
     m_spaces[index]->closing = true;
 
-    // Leaving the shown one for the desktop: from the workspace right next to it, not across the
-    // ones between them (it looks the same, it's out of the way)
-    if (target == 0 && index == m_current && index > 1 && !moving())
+    // Leaving the shown one: from right next to where it goes, not across the ones between them
+    // (it looks the same, it's out of the way)
+    if (target >= 0 && index == m_current && std::abs(Int64(index) - target) > 1 && !moving())
     {
         auto space { std::move(m_spaces[index]) };
         m_spaces.erase(m_spaces.begin() + index);
-        m_spaces.insert(m_spaces.begin() + 1, std::move(space));
-        m_current = 1;
-        m_pos = 1.0;
+
+        if (Int64(index) > target)
+        {
+            m_spaces.insert(m_spaces.begin() + target + 1, std::move(space));
+            m_current = size_t(target + 1);
+        }
+        else
+        {
+            target--; // Shifted by the erase
+            m_spaces.insert(m_spaces.begin() + target, std::move(space));
+            m_current = size_t(target);
+            target++;
+        }
+
+        m_pos = Float64(m_current);
     }
 
     if (target >= 0)
@@ -282,6 +327,55 @@ void Workspaces::removeClosed() noexcept
 
     m_pos = Float64(m_current);
     onPosChanged();
+    Expose::WorkspacesChanged(); // Its bar (only visual: deferred)
+}
+
+void Workspaces::move(size_t from, size_t to) noexcept
+{
+    if (from == 0 || to == 0 || from >= m_spaces.size() || to >= m_spaces.size() || from == to)
+        return;
+
+    // The one shown keeps being shown (wherever it ends up)
+    const Space *current { m_spaces[m_current].get() };
+    auto space { std::move(m_spaces[from]) };
+    m_spaces.erase(m_spaces.begin() + from);
+    m_spaces.insert(m_spaces.begin() + to, std::move(space));
+
+    for (size_t i = 0; i < m_spaces.size(); i++)
+        if (m_spaces[i].get() == current)
+            m_current = i;
+
+    m_spring.pause();
+    m_pos = Float64(m_current);
+    onPosChanged();
+}
+
+void Workspaces::destroy(size_t index, bool animated) noexcept
+{
+    if (index == 0 || index >= m_spaces.size())
+        return;
+
+    // Through its window: leaving fullscreen removes it (see Sync())
+    if (ToplevelRole *toplevel { m_spaces[index]->toplevel.get() })
+    {
+        toplevel->leaveFullscreen(animated);
+        return;
+    }
+
+    // A desktop: its windows go to the first one
+    if (const UInt32 id { m_spaces[index]->desktopId })
+    {
+        for (Surface *s : GetSurfaces())
+            if (auto *t { static_cast<ToplevelRole*>(s->toplevel()) }; t && t->desktopId == id)
+                t->desktopId = m_spaces[0]->desktopId;
+
+        m_spaces[index]->desktopId = 0;
+
+        if (m_lastDesktopId == id)
+            m_lastDesktopId = m_spaces[0]->desktopId;
+    }
+
+    close(index, index == m_current ? 0 : -1);
 }
 
 void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noexcept
@@ -291,7 +385,10 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
     m_current = size_t(index);
 
     if (changed)
+    {
         seat()->dismissPopups();
+        updateDeskImage(); // For the desktops it isn't drawn on while sliding
+    }
 
     startSpring(Float64(index), velocity, stiffness);
 
@@ -366,7 +463,7 @@ void Workspaces::activateCurrent() noexcept
             auto *toplevel { static_cast<ToplevelRole*>(s->toplevel()) };
             size_t index;
 
-            if (toplevel && !s->parent() && s->mapped() && !toplevel->isMinimized() && Find(s, &index) == this && index == 0)
+            if (toplevel && !s->parent() && s->mapped() && !toplevel->isMinimized() && Find(s, &index) == this && index == m_current)
                 target = toplevel;
         }
     }
@@ -407,8 +504,13 @@ void Workspaces::onPosChanged() noexcept
         backdrop.layout().setWidth(r.width());
         backdrop.layout().setHeight(r.height());
         backdrop.setVisible(std::abs(Float64(i) - m_pos) < 0.999 &&
-                            (!s_renderingOutput || s_renderingOutput == &m_output || !moving()));
+                            (!s_renderingOutput || s_renderingOutput == &m_output || !moving()) &&
+                            !(m_spaces[i]->deskImage && (i == deskIndex() || !m_spaces[i]->deskImage->image())));
     }
+
+    // The last desktop shown
+    if (isDesktop(m_current) && !moving())
+        m_lastDesktopId = m_spaces[m_current]->desktopId;
 
     for (Surface *surface : GetSurfaces())
         surface->view.syncVisibility();
@@ -458,9 +560,78 @@ void Workspaces::Sync(ToplevelRole &toplevel) noexcept
     {
         // Back to a window: to the desktop, where it lands. Gone (or minimized): the previous one.
         const bool unfullscreened { s && s->mapped() && !toplevel.isMinimized() };
-        ws->close(index, index != ws->m_current ? -1 : unfullscreened ? 0 : Int64(index) - 1,
+        size_t desktop { ws->desktopIndex(toplevel.desktopId) };
+
+        if (desktop == SIZE_MAX)
+        {
+            toplevel.desktopId = ws->defaultDesktop();
+            desktop = ws->desktopIndex(toplevel.desktopId);
+        }
+
+        ws->close(index, index != ws->m_current ? -1 : unfullscreened ? Int64(desktop == SIZE_MAX ? 0 : desktop) : Int64(index) - 1,
                   unfullscreened ? FullscreenStiffness : SpringStiffness);
     }
+}
+
+size_t Workspaces::desktopIndex(UInt32 id) const noexcept
+{
+    if (id == 0)
+        return SIZE_MAX;
+
+    for (size_t i = 0; i < m_spaces.size(); i++)
+        if (m_spaces[i]->desktopId == id)
+            return i;
+
+    return SIZE_MAX;
+}
+
+UInt32 Workspaces::defaultDesktop() const noexcept
+{
+    if (isDesktop(m_current))
+        return m_spaces[m_current]->desktopId;
+
+    if (desktopIndex(m_lastDesktopId) != SIZE_MAX)
+        return m_lastDesktopId;
+
+    return m_spaces.empty() ? 0 : m_spaces[0]->desktopId;
+}
+
+size_t Workspaces::deskIndex() const noexcept
+{
+    if (isDesktop(m_current))
+        return m_current;
+
+    const size_t last { desktopIndex(m_lastDesktopId) };
+    return last == SIZE_MAX ? 0 : last;
+}
+
+size_t Workspaces::addDesktop() noexcept
+{
+    insert(m_spaces.size(), nullptr);
+    updateDeskImage();
+    return m_spaces.size() - 1;
+}
+
+void Workspaces::updateDeskImage() noexcept
+{
+    LSurface *desk { nullptr };
+
+    for (LSurface *s : compositor()->surfaces())
+        if (!s->parent() && s->mapped() && Crystals::IsDesk(s) && s->layerRole()->exclusiveOutput() == &m_output)
+            desk = s;
+
+    if (!desk)
+        return;
+
+    auto image { Snapshot::View(*static_cast<Surface*>(desk), desk->size(), SkIPoint::Make(0, 0),
+                                std::max(1, Int32(std::ceil(m_output.scale())))) };
+
+    for (auto &space : m_spaces)
+        if (space->deskImage)
+        {
+            space->deskImage->setImage(image);
+            space->deskImage->addDamage(AK_IRECT_INF);
+        }
 }
 
 void Workspaces::Removed(ToplevelRole &toplevel) noexcept
@@ -516,6 +687,7 @@ bool Workspaces::SwipeBegin(UInt32 fingers) noexcept
 
     s_swiping = ws;
     ws->m_swiping = true;
+    ws->updateDeskImage(); // For the desktops it isn't drawn on while sliding
     ws->m_swipeVelocity = 0.0;
     ws->m_swipeRaw = ws->m_spring.isRunning() ? ws->m_spring.to() : ws->m_pos; // Grabbing it mid-slide
     ws->m_swipeLast = std::chrono::steady_clock::now();

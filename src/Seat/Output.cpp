@@ -84,7 +84,7 @@ void Output::paintGL()
     // display's refresh rate forever (burning CPU at idle).
     // Exposé: every frame, so the windows it shows (hidden, through their snapshots) keep getting
     // their frame callbacks and drawing (see handleSurfaceCallbacks())
-    if (core->hasRunningAnimations() || Expose::Active())
+    if (core->hasRunningAnimations() || Expose::ShownOn() == this)
         repaint();
 }
 

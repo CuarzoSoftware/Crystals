@@ -4,12 +4,15 @@
 #include <Scene/Scene.h>
 #include <Core/Crystals.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 
 SkIPoint LayerRole::rolePos() const
 {
     // Moved, not just drawn elsewhere: input follows what's shown.
     // The desktop: away while a fullscreen workspace is shown (see Workspaces)
-    return LLayerRole::rolePos() - SkIPoint::Make(0, TopbarAutoHide::TopbarOffset(*this)) + Workspaces::ParkOffset(surface());
+    // Top bars: up out of the way of Exposé's workspaces bar
+    return LLayerRole::rolePos() - SkIPoint::Make(0, TopbarAutoHide::TopbarOffset(*this) + Expose::TopbarOffset(*this)) +
+           Workspaces::ParkOffset(surface());
 }
 
 void LayerRole::stateChanged(CZBitset<Changes> changes, const State &prev) noexcept

@@ -7,6 +7,7 @@
 #include <Core/CZSpringAnimation.h>
 #include <Core/Events/CZKeyboardKeyEvent.h>
 #include <AK/Nodes/AKSolidColor.h>
+#include <AK/Nodes/AKImage.h>
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -14,9 +15,13 @@
 /**
  * @brief The workspaces of an output (like macOS Spaces).
  *
- * Workspace 0 is the desktop: the desktop (Desk) and every window that isn't fullscreen. Each
- * fullscreen window gets its own workspace, created right after the current one when it goes
- * fullscreen (and removed when it leaves fullscreen or goes away). Workspaces are laid out left to
+ * Desktop workspaces hold the windows that aren't fullscreen (each window belongs to one, see
+ * ToplevelRole::desktopId: new ones go to the current desktop, or the last one shown), and show
+ * the desktop (Desk: on the current desktop, or the last one shown; the others show a snapshot of
+ * it while in view). The first desktop is always workspace 0 (it can't be moved or removed);
+ * others are added (addDesktop()) and removed (their windows go to the first one). Each fullscreen
+ * window gets its own workspace, created right after the current one when it goes fullscreen (and
+ * removed when it leaves fullscreen, back to its desktop, or goes away). Workspaces are laid out left to
  * right and the output shows one at a time, sliding between them:
  * - Ctrl+Super+Left/Right.
  * - A horizontal three finger swipe (following the fingers, settling with a spring).
@@ -38,6 +43,10 @@ class Workspaces final : public CZObject
 public:
     /// Spring of the slide between workspaces (critically damped, ~0.5 s).
     static constexpr Float64 SpringStiffness { 15000.0 };
+
+    /// Slightly underdamped: it settles much sooner than a critically damped spring (whose last few
+    /// percent creep in), overshooting ~0.15%. FullscreenAnimation follows the same curve.
+    static constexpr Float64 SpringDamping { 0.9 };
 
     /// A bit softer when a window enters/leaves fullscreen (FullscreenAnimation follows it, ~0.65 s).
     static constexpr Float64 FullscreenStiffness { 12500.0 };
@@ -113,6 +122,21 @@ public:
 
     Output &output() const noexcept { return m_output; }
     size_t count() const noexcept { return m_spaces.size(); }
+
+    /// Whether workspace @p index was left by its window (removed once out of view).
+    bool closing(size_t index) const noexcept { return index < m_spaces.size() && m_spaces[index]->closing; }
+
+    /// The id of desktop @p index (0 if not a desktop, see ToplevelRole::desktopId).
+    UInt32 desktopId(size_t index) const noexcept { return index < m_spaces.size() ? m_spaces[index]->desktopId : 0; }
+
+    /// Whether workspace @p index is a desktop (not a fullscreen window's).
+    bool isDesktop(size_t index) const noexcept { return index < m_spaces.size() && m_spaces[index]->desktopId != 0; }
+
+    /// Where the desktop (Desk) is shown: the current workspace if a desktop, or the last desktop shown.
+    size_t deskIndex() const noexcept;
+
+    /// Adds a desktop workspace at the end. Returns its index.
+    size_t addDesktop() noexcept;
     size_t current() const noexcept { return m_current; }
 
     /// The fullscreen window of workspace @p index (nullptr for the desktop).
@@ -132,6 +156,15 @@ public:
      */
     void jumpTo(Int64 index, bool show = true) noexcept;
 
+    /**
+     * @brief Removes fullscreen workspace @p index (not the desktop): its window leaves fullscreen
+     *        and goes back to the desktop (without FullscreenAnimation if not @p animated).
+     */
+    void destroy(size_t index, bool animated = true) noexcept;
+
+    /// Moves fullscreen workspace @p from to position @p to (not the desktop's: it stays first).
+    void move(size_t from, size_t to) noexcept;
+
     /// Shows the current workspace right away (see jumpTo()). Only visual (any thread, like the
     /// slide's steps).
     void showCurrent() noexcept;
@@ -148,12 +181,26 @@ public:
 private:
     struct Space
     {
-        CZWeak<ToplevelRole> toplevel; // nullptr: the desktop, or a closing workspace
-        bool closing { false };        // Left by its window: removed once out of view
-        std::unique_ptr<AKSolidColor> backdrop;
+        CZWeak<ToplevelRole> toplevel; // A fullscreen window's (nullptr: a desktop, or closing)
+        UInt32 desktopId { 0 };        // A desktop's (0: not a desktop)
+        bool closing { false };        // Left by its window / removed: removed once out of view
+        std::unique_ptr<AKNode> backdrop; // Black (fullscreen) or the desktop's snapshot (desktops)
+        AKImage *deskImage { nullptr };   // The desktop's snapshot (desktops)
     };
 
     Space &insert(size_t index, ToplevelRole *toplevel) noexcept;
+
+    /// Index of the desktop @p id (SIZE_MAX if none).
+    size_t desktopIndex(UInt32 id) const noexcept;
+
+    /// The desktop new windows go to: the current one, or the last one shown.
+    UInt32 defaultDesktop() const noexcept;
+
+    /// Takes a snapshot of the desktop (Desk) for the desktops it isn't drawn on.
+    void updateDeskImage() noexcept;
+
+    UInt32 m_nextDesktopId { 1 };
+    UInt32 m_lastDesktopId { 0 }; // The last desktop shown
     void close(size_t index, Int64 switchTo, Float64 stiffness = SpringStiffness) noexcept;
     void removeClosed() noexcept;
     void activateCurrent() noexcept;

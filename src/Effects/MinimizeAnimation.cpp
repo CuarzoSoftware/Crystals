@@ -1,4 +1,6 @@
 #include <Effects/MinimizeAnimation.h>
+#include <Louvre/Roles/LLayerRole.h>
+#include <Louvre/Cursor/LCursor.h>
 #include <Roles/Surface.h>
 #include <Roles/ToplevelRole.h>
 #include <Decorations/SSD.h>
@@ -116,6 +118,7 @@ MinimizeAnimation::MinimizeAnimation(LToplevelRole &toplevel, bool minimizing) n
             compositor()->repaintAllOutputs();
         })
 {
+    m_dockOutput = cursor()->output();
     m_window = windowRect();
     m_lastDock = dockRect();
 
@@ -146,6 +149,49 @@ SkRect MinimizeAnimation::windowRect() const noexcept
                                           s->size().width(), s->size().height() + titlebar));
 }
 
+// The dock (taskbar) reports the window's spot on one of its surfaces (e.g. Shelf, on the first
+// screen's dock). The animation goes to the dock of the screen the cursor was on: the same client's
+// surface with the same scope there, the spot mapped relative to each dock's bounds (their input
+// region: docks may have different sizes on each screen).
+static SkRect OnDockOf(LSurface &taskbar, const SkIRect &iconRect, const LOutput *output) noexcept
+{
+    const SkRect reported { SkRect::Make(iconRect.makeOffset(taskbar.rolePos())) };
+    LLayerRole *layer { taskbar.layerRole() };
+
+    if (!output || !layer || layer->exclusiveOutput() == output)
+        return reported;
+
+    LSurface *target { nullptr };
+
+    for (LSurface *s : compositor()->surfaces())
+        if (s != &taskbar && !s->parent() && s->mapped() && s->client() == taskbar.client() && s->layerRole() &&
+            s->layerRole()->exclusiveOutput() == output && s->layerRole()->scope() == layer->scope())
+        {
+            target = s;
+            break;
+        }
+
+    if (!target)
+        return reported;
+
+    const auto bounds = [](LSurface &s) {
+        const SkIRect in { s.inputRegion().isEmpty() ? SkIRect::MakeSize(s.size()) : s.inputRegion().getBounds() };
+        return SkRect::Make(in.makeOffset(s.rolePos()));
+    };
+
+    const SkRect from { bounds(taskbar) }, to { bounds(*target) };
+
+    if (from.isEmpty() || to.isEmpty())
+        return reported;
+
+    // Same place along the dock, scaled like its height (its icons' size)
+    const SkScalar fx { (reported.centerX() - from.x()) / from.width() };
+    const SkScalar fy { (reported.centerY() - from.y()) / from.height() };
+    const SkScalar scale { to.height() / from.height() };
+    const SkScalar w { reported.width() * scale }, h { reported.height() * scale };
+    return SkRect::MakeXYWH(to.x() + fx * to.width() - w * 0.5f, to.y() + fy * to.height() - h * 0.5f, w, h);
+}
+
 SkRect MinimizeAnimation::dockRect() const noexcept
 {
     if (m_toplevel)
@@ -155,7 +201,7 @@ SkRect MinimizeAnimation::dockRect() const noexcept
             if (!c->taskbar() || c->taskbarIconRect().isEmpty())
                 continue;
 
-            return SkRect::Make(c->taskbarIconRect().makeOffset(c->taskbar()->rolePos()));
+            return OnDockOf(*c->taskbar(), c->taskbarIconRect(), m_dockOutput);
         }
     }
 

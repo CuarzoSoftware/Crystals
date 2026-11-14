@@ -4,6 +4,7 @@
 #include <Core/Workspaces.h>
 #include <Core/Crystals.h>
 #include <Roles/ToplevelRole.h>
+#include <Decorations/SSDTheme.h>
 #include <Roles/Surface.h>
 #include <Roles/LayerRole.h>
 #include <Scene/Scene.h>
@@ -13,7 +14,9 @@
 #include <Louvre/Seat/LKeyboard.h>
 #include <Louvre/Cursor/LCursor.h>
 #include <Louvre/Roles/LLayerRole.h>
+#include <Louvre/Roles/LPopupRole.h>
 #include <Core/CZTimer.h>
+#include <Core/CZEase.h>
 #include <Core/CZBus.h>
 #include <Effects/SurfaceBlurManager.h>
 #include <systemd/sd-bus.h>
@@ -21,6 +24,9 @@
 #include <Ream/RPass.h>
 #include <Ream/RPainter.h>
 #include <CZ/skia/core/SkCanvas.h>
+#include <unordered_map>
+#include <CZ/skia/core/SkMaskFilter.h>
+#include <CZ/skia/core/SkBlurTypes.h>
 #include <linux/input-event-codes.h>
 #include <algorithm>
 #include <cmath>
@@ -41,7 +47,7 @@ void Expose::Clear() noexcept
 }
 
 Expose::Expose() noexcept :
-    m_spring(0.0, 0.0, 0.0, SpringStiffness, CZSpringAnimation::DampingRatioNoBouncy,
+    m_spring(0.0, 0.0, 0.0, SpringStiffness, Workspaces::SpringDamping,
         [this](CZAnimation *a)
         {
             m_progress = a->value();
@@ -56,7 +62,17 @@ Expose::Expose() noexcept :
             if (!m_open && !m_swiping && m_progress <= 0.001 && !m_zoomThumb)
                 deactivate();
         }),
-    m_zoom(0.0, 1.0, 0.0, SpringStiffness, CZSpringAnimation::DampingRatioNoBouncy,
+    m_addAnim(AddMs,
+        [this](CZAnimation *a){ addStep(a->value()); },
+        [this](CZAnimation*)
+        {
+            // It got there: the bar is rebuilt with it (next frame, see ProcessPending())
+            addStep(1.0);
+            m_addScreen = nullptr;
+            m_rebuildPending = true;
+            compositor()->repaintAllOutputs();
+        }),
+    m_zoom(0.0, 1.0, 0.0, SpringStiffness, Workspaces::SpringDamping,
         [this](CZAnimation *a){ zoomStep(a->value()); },
         [this](CZAnimation*)
         {
@@ -88,6 +104,21 @@ bool Expose::Active() noexcept
     return s_expose && s_expose->m_active;
 }
 
+Output *Expose::ShownOn() noexcept
+{
+    return Active() ? s_expose->m_output : nullptr;
+}
+
+Int32 Expose::TopbarOffset(const LLayerRole &layerRole) noexcept
+{
+    if (!Active() || !TopbarAutoHide::IsTopbar(layerRole) || layerRole.exclusiveOutput() != s_expose->m_output)
+        return 0;
+
+    const LSurface *s { layerRole.surface() };
+    const Float64 p { std::clamp(s_expose->m_progress, 0.0, 1.0) };
+    return Int32(std::lround(p * (s->size().height() + std::max(0, layerRole.margins().top))));
+}
+
 bool Expose::HidesSurface(const LSurface *surface) noexcept
 {
     if (!Active() || !surface)
@@ -99,10 +130,17 @@ bool Expose::HidesSurface(const LSurface *surface) noexcept
     if (!toplevel)
         return false;
 
-    // Zooming into a workspace: it's shown (switched to) but the thumbnail covers it until the end
-    if (s_expose->m_zoomScreen)
-        if (Workspaces *ws { Workspaces::Find(root) }; ws && &ws->output() == s_expose->m_zoomScreen->output)
+    // Zooming into a workspace: it's current already, its windows hidden until the thumbnail fills
+    // the screen. The one that was shown stays in the background meanwhile (e.g. a fullscreen
+    // window, shown as is).
+    if (s_expose->m_zoomScreen && s_expose->m_zoomThumb)
+    {
+        size_t index;
+
+        if (Workspaces *ws { Workspaces::Find(root, &index) }; ws && &ws->output() == s_expose->m_zoomScreen->output &&
+            index == s_expose->m_zoomThumb->workspace)
             return true;
+    }
 
     for (const auto &w : s_expose->m_windows)
         if (w->laidOut && w->toplevel.get() == toplevel)
@@ -159,6 +197,14 @@ void Expose::snapshot(Window &w) noexcept
 
 void Expose::build() noexcept
 {
+    // Thumbnails are recreated: a press in progress is dropped, an addition finished
+    m_addAnim.pause();
+    m_addScreen = nullptr;
+    m_addMoves.clear();
+    m_pressScreen = nullptr;
+    m_pressThumb = nullptr;
+    m_dragging = false;
+
     m_zoom.pause();
     m_zoomThumb = nullptr;
     m_zoomScreen = nullptr;
@@ -184,14 +230,15 @@ void Expose::build() noexcept
             size_t index;
             Workspaces *ws { Workspaces::Find(s, &index) };
 
-            if (!ws)
+            if (!ws || &ws->output() != m_output)
                 continue;
 
             auto &w { m_windows.emplace_back(std::make_unique<Window>()) };
             w->toplevel.reset(toplevel);
             w->output = &ws->output();
             w->workspace = index;
-            w->laidOut = true; // In its workspace's layout (see layoutScreen())
+            // The desktop's windows are laid out; fullscreen workspaces are shown as they are
+            w->laidOut = ws->isDesktop(index);
             w->from = WindowRect(*toplevel);
 
             const SkRegion empty;
@@ -203,19 +250,37 @@ void Expose::build() noexcept
                 node->layout().setPositionType(YGPositionTypeAbsolute);
             }
 
-            w->node.setParent(&layer);
+            if (w->laidOut)
+                w->node.setParent(&layer);
 
             snapshot(*w);
         }
     }
 
-    // A bar on each output (above the windows)
-    for (LOutput *o : compositor()->outputs())
+    // The hovered window's outline, above the windows
+    m_hoverWindow = nullptr;
+    m_pressWindow = nullptr;
+    m_windowDragging = false;
+    m_dropThumb = nullptr;
+    const SkRegion noInput;
+    m_windowOutline.setInputRegion(&noInput);
+    m_windowOutline.setThickness(4);
+    m_windowOutline.layout().setPositionType(YGPositionTypeAbsolute);
+    m_windowOutline.setVisible(false);
+    m_windowOutline.setParent(&layer);
+
+    // Its bar (above the windows)
+    if (m_output)
     {
         auto &screen { m_screens.emplace_back(std::make_unique<Screen>()) };
-        screen->output = static_cast<Output*>(o);
+        screen->output = m_output;
         layoutScreen(*screen);
     }
+
+    // Removed workspaces' thumbnails still fading out: above the new bars
+    for (auto &r : m_removed)
+        if (!r->done)
+            r->box.setParent(&layer);
 }
 
 // Windows laid out in rows, keeping their order (top to bottom, left to right), as large as possible
@@ -298,6 +363,32 @@ static void LayoutSlots(const std::vector<SkRect> &from, std::vector<SkRect> &sl
     }
 }
 
+// A soft dark circle (the close button's shadow), blurred within CloseShadowPad around it.
+static std::shared_ptr<RImage> CloseShadowImage(std::unordered_map<Int32, std::shared_ptr<RImage>> &cache, Int32 scale) noexcept
+{
+    if (auto it { cache.find(scale) }; it != cache.end())
+        return it->second;
+
+    const Int32 size { Expose::CloseSize + 2 * Expose::CloseShadowPad };
+    auto surface { RSurface::Make(SkISize::Make(size, size), scale, true) };
+
+    if (!surface)
+        return nullptr;
+
+    if (auto pass { surface->beginPass(RPassCap_SkCanvas) })
+    {
+        auto &c { *pass->getCanvas() };
+        c.clear(SK_ColorTRANSPARENT);
+        SkPaint paint;
+        paint.setAntiAlias(true);
+        paint.setColor(0x73000000);
+        paint.setMaskFilter(SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, Expose::CloseShadowPad / 3.f));
+        c.drawCircle(SkPoint::Make(size / 2.f, size / 2.f), Expose::CloseSize / 2.f, paint);
+    }
+
+    return cache[scale] = surface->image();
+}
+
 void Expose::layoutScreen(Screen &screen) noexcept
 {
     Output &output { *screen.output };
@@ -328,8 +419,20 @@ void Expose::layoutScreen(Screen &screen) noexcept
     screen.blur.setFullSize();
     screen.blur.setColorScheme(scheme);
     screen.barFill.addBackgroundEffect(&screen.blur);
+    screen.shadow.setInputRegion(&empty);
+    screen.shadow.layout().setHeight(BarShadow);
+    screen.shadow.layout().setPosition(YGEdgeBottom, -BarShadow);
+    screen.shadow.setOpacity(BarShadowOpacity);
+    screen.shadow.setParent(&screen.bar);
 
-    const SkScalar total { count * thumbW + (count - 1) * ThumbGap };
+    // Workspaces being removed (left by their window) take no room
+    size_t shownCount { 0 };
+
+    for (size_t i = 0; i < count; i++)
+        if (!ws || !ws->closing(i))
+            shownCount++;
+
+    const SkScalar total { shownCount * thumbW + (shownCount > 0 ? shownCount - 1 : 0) * ThumbGap };
     const SkScalar x0 { std::round((r.width() - total) * 0.5f) };
     const SkScalar fit { thumbW / std::max(1.f, r.width()) }; // Output -> thumbnail
 
@@ -339,11 +442,20 @@ void Expose::layoutScreen(Screen &screen) noexcept
     if (LSurface *desk { DeskOf(&output) })
         desktop = Snapshot::View(*static_cast<Surface*>(desk), desk->size(), SkIPoint::Make(0, 0), 1);
 
+    size_t slot { 0 };
+    screen.slots.clear();
+    screen.thumbWidth = thumbW;
+
+    for (size_t i = 0; i < shownCount; i++)
+        screen.slots.push_back(x0 + i * (thumbW + ThumbGap));
+
     for (size_t i = 0; i < count; i++)
     {
         auto &thumb { screen.thumbs.emplace_back(std::make_unique<Thumb>()) };
         thumb->workspace = i;
-        thumb->rect = SkRect::MakeXYWH(x0 + i * (thumbW + ThumbGap), BarPadding, thumbW, thumbH);
+        const bool closing { ws && ws->closing(i) };
+        thumb->rect = closing ? SkRect::MakeEmpty() : SkRect::MakeXYWH(x0 + slot++ * (thumbW + ThumbGap), BarPadding, thumbW, thumbH);
+        thumb->box.setVisible(!closing);
 
         // The current one's outline, around it
         const Int32 out { thumb->frame.thickness() + ThumbOutlineGap };
@@ -374,12 +486,80 @@ void Expose::layoutScreen(Screen &screen) noexcept
             node->setParent(&thumb->box);
         }
 
-        thumb->desktop.setImage(i == 0 ? desktop : nullptr);
-        thumb->desktop.setVisible(i == 0 && desktop);
+        const bool isDesktop { ws && ws->isDesktop(i) };
+        thumb->desktop.setImage(isDesktop ? desktop : nullptr);
+        thumb->desktop.setVisible(isDesktop && desktop);
         thumb->topbar.setInputRegion(&empty);
         thumb->topbar.layout().setPositionType(YGPositionTypeAbsolute);
         thumb->topbar.setVisible(false);
     }
+
+    // The close button, above the thumbnails (see setHovered())
+    screen.closeButton.setBackgroundColor(dark ? 0xFF5A5A5E : 0xFFF2F2F7);
+    screen.closeButton.layout().setPositionType(YGPositionTypeAbsolute);
+    screen.closeButton.layout().setWidth(CloseSize);
+    screen.closeButton.layout().setHeight(CloseSize);
+    screen.closeButton.layout().setJustifyContent(YGJustifyCenter);
+    screen.closeButton.layout().setAlignItems(YGAlignCenter);
+    screen.closeButton.setInputRegion(&empty);
+    screen.closeIcon.setInputRegion(&empty);
+    screen.closeIcon.setColor(dark ? 0xFFEBEBF0 : 0xFF48484A);
+    screen.closeButton.setVisible(false);
+    screen.closeShadow.setInputRegion(&empty);
+    screen.closeShadow.setImage(CloseShadowImage(m_closeShadows, std::max(1, Int32(std::ceil(output.scale())))));
+    screen.closeShadow.layout().setPositionType(YGPositionTypeAbsolute);
+    screen.closeShadow.layout().setWidth(CloseSize + 2 * CloseShadowPad);
+    screen.closeShadow.layout().setHeight(CloseSize + 2 * CloseShadowPad);
+    screen.closeShadow.setVisible(false);
+    screen.closeShadow.setParent(&screen.bar);
+    screen.closeButton.setParent(&screen.bar);
+
+    // The plus button on the right, centered on the thumbnails, and the new desktop peeking in
+    // from the edge behind it (shown while hovered, see setPlusHovered())
+    screen.thumbHeight = thumbH;
+    screen.desktopImage = desktop;
+    screen.plusRect = SkRect::MakeXYWH(r.width() - BarPadding - PlusIconSize, BarPadding + (thumbH - PlusIconSize) / 2.f, PlusIconSize, PlusIconSize);
+    screen.peekRect = SkRect::MakeXYWH(r.width() - thumbW * PeekVisible, BarPadding, thumbW, thumbH);
+
+    screen.peek.setInputRegion(&empty);
+    screen.peek.enableChildrenClipping(true);
+    screen.peek.layout().setPositionType(YGPositionTypeAbsolute);
+    screen.peek.setVisible(false);
+    screen.peek.setParent(&screen.bar);
+
+    for (AKImage *img : { &screen.peekDesktop, &screen.peekTopbar })
+    {
+        img->setInputRegion(&empty);
+        img->layout().setPositionType(YGPositionTypeAbsolute);
+        img->setParent(&screen.peek);
+    }
+
+    screen.peekDesktop.layout().setWidthPercent(100.f);
+    screen.peekDesktop.layout().setHeightPercent(100.f);
+    screen.peekDesktop.setImage(desktop);
+
+    screen.plusShadow.setInputRegion(&empty);
+    screen.plusShadow.setImage(CloseShadowImage(m_closeShadows, std::max(1, Int32(std::ceil(output.scale())))));
+    screen.plusShadow.layout().setPositionType(YGPositionTypeAbsolute);
+    screen.plusShadow.layout().setPosition(YGEdgeLeft, screen.plusRect.x() - CloseShadowPad);
+    screen.plusShadow.layout().setPosition(YGEdgeTop, screen.plusRect.y() - CloseShadowPad + 2);
+    screen.plusShadow.layout().setWidth(CloseSize + 2 * CloseShadowPad);
+    screen.plusShadow.layout().setHeight(CloseSize + 2 * CloseShadowPad);
+    screen.plusShadow.setVisible(false); // Just the sign (no circle)
+    screen.plusShadow.setParent(&screen.bar);
+
+    screen.plusButton.setBackgroundColor(SK_ColorTRANSPARENT);
+    screen.plusButton.setInputRegion(&empty);
+    screen.plusButton.layout().setPositionType(YGPositionTypeAbsolute);
+    screen.plusButton.layout().setPosition(YGEdgeLeft, screen.plusRect.x());
+    screen.plusButton.layout().setPosition(YGEdgeTop, screen.plusRect.y());
+    screen.plusButton.layout().setWidth(PlusIconSize);
+    screen.plusButton.layout().setHeight(PlusIconSize);
+    screen.plusButton.layout().setJustifyContent(YGJustifyCenter);
+    screen.plusButton.layout().setAlignItems(YGAlignCenter);
+    screen.plusIcon.setInputRegion(&empty);
+    screen.plusIcon.setColor(dark ? 0xFFEBEBF0 : 0xFF48484A);
+    screen.plusButton.setParent(&screen.bar);
 
     // The top bar in the desktop's thumbnail (it's only shown there), as is (not faded), with a
     // blur over the thumbnail's picture like the real one's
@@ -400,13 +580,21 @@ void Expose::layoutScreen(Screen &screen) noexcept
             if (!image)
                 break;
 
-            Thumb &desk { *screen.thumbs.front() };
             // Where it is on the desktop (not slid away by a fullscreen workspace)
             const SkIPoint pos { static_cast<LayerRole*>(s->layerRole())->baseRolePos() };
-            desk.topbarFrom = SkRect::Make(SkIRect::MakePtSize(pos, s->size()));
-            desk.topbar.setImage(image);
-            desk.topbar.setVisible(true);
-            desk.topbar.setParent(&desk.box);
+            screen.topbarImage = image;
+            screen.topbarFrom = SkRect::Make(SkIRect::MakePtSize(pos, s->size()));
+
+            for (auto &desk : screen.thumbs)
+            {
+                if (!ws || !ws->isDesktop(desk->workspace))
+                    continue;
+
+                desk->topbarFrom = screen.topbarFrom;
+                desk->topbar.setImage(image);
+                desk->topbar.setVisible(true);
+                desk->topbar.setParent(&desk->box);
+            }
             break;
         }
     }
@@ -557,8 +745,13 @@ void Expose::apply() noexcept
         const SkScalar dx { ws ? SkScalar(ws->slideX(w->workspace)) : 0.f };
         w->node.setVisible(!ws || std::abs(Float64(w->workspace) - ws->pos()) < 0.999);
 
+        // Being dragged: where the pointer takes it (see dragWindowTo())
+        if (w.get() == m_pressWindow && m_windowDragging)
+            continue;
+
         // Its shadow scaled with it
         const SkRect r { Lerp(w->from, w->slot, p).makeOffset(dx, 0.f) };
+        w->shown = r;
         const SkScalar s { r.width() / w->from.width() };
         w->node.layout().setPosition(YGEdgeLeft, r.x() - w->margins.left() * s);
         w->node.layout().setPosition(YGEdgeTop, r.y() - w->margins.top() * s);
@@ -566,10 +759,13 @@ void Expose::apply() noexcept
         w->node.layout().setHeight(std::max(1.f, r.height() + (w->margins.top() + w->margins.bottom()) * s));
     }
 
-    // The top bars fade out as the workspace bar comes in (their blur too)
+    placeWindowOutline();
+
+    // Its output's top bars fade out as the workspace bar comes in (their blur too)
     for (Surface *surface : GetSurfaces())
     {
-        if (surface->parent() || !surface->layerRole() || !TopbarAutoHide::IsTopbar(*surface->layerRole()))
+        if (surface->parent() || !surface->layerRole() || !TopbarAutoHide::IsTopbar(*surface->layerRole()) ||
+            surface->layerRole()->exclusiveOutput() != m_output)
             continue;
 
         surface->view.view.setOpacity(1.f - bar);
@@ -583,7 +779,7 @@ void Expose::apply() noexcept
         // The outline follows the current workspace
         if (const Workspaces *ws { screen->output->workspaces.get() })
             for (auto &thumb : screen->thumbs)
-                thumb->frame.setVisible(thumb->workspace == ws->current() && thumb.get() != m_zoomThumb);
+                thumb->frame.setVisible(thumb->workspace == ws->current() && thumb.get() != m_zoomThumb && thumb->box.visible());
 
         const SkIRect &r { screen->output->rect() };
         screen->bar.layout().setPosition(YGEdgeLeft, r.x());
@@ -601,10 +797,29 @@ void Expose::activate() noexcept
     if (m_active)
         return;
 
+    // Where the cursor is (still there: outputs may come and go)
+    m_output = static_cast<Output*>(cursor()->output());
+
+    if (!m_output && !compositor()->outputs().empty())
+        m_output = static_cast<Output*>(compositor()->outputs().front());
+
+    if (!m_output)
+        return;
+
     m_active = true;
     notify(true);
-    seat()->dismissPopups();
     build();
+
+    // The popups of the windows laid out (not the fullscreen workspaces', shown as they are)
+    std::vector<LPopupRole*> popups;
+
+    for (LSurface *s : compositor()->surfaces())
+        if (s->popup() && s->mapped() && HidesSurface(s))
+            popups.push_back(s->popup());
+
+    for (LPopupRole *popup : popups)
+        popup->dismiss();
+
     apply();
 
     for (Surface *surface : GetSurfaces())
@@ -659,6 +874,10 @@ void Expose::animateTo(Float64 target, Float64 velocity) noexcept
 
 void Expose::close(ToplevelRole *toplevel) noexcept
 {
+    endPress(false);
+    endWindowPress(false);
+    setHoverWindow(nullptr);
+
     // The chosen window: activated, on top, back where it was
     if (toplevel)
     {
@@ -723,7 +942,8 @@ void Expose::notify(bool shown) noexcept
         return;
 
     auto &bus { m_bus };
-    sd_bus_emit_signal(bus->bus(), "/org/cuarzo/Crystals", "org.cuarzo.Crystals", "ExposeChanged", "b", int(shown));
+    sd_bus_emit_signal(bus->bus(), "/org/cuarzo/Crystals", "org.cuarzo.Crystals", "ExposeChanged", "bs", int(shown),
+                       m_output ? m_output->name().c_str() : "");
     sd_bus_flush(bus->bus());
 }
 
@@ -739,6 +959,14 @@ void Expose::ProcessPending(Output &output) noexcept
 
     if (!e || !e->m_active)
         return;
+
+    // Workspaces removed (not while zooming: its thumbnail is in use)
+    if (e->m_rebuildPending && e->m_open && !e->m_zoomThumb)
+    {
+        e->m_rebuildPending = false;
+        e->build();
+        e->apply();
+    }
 
     for (auto &w : e->m_windows)
         if (w->dirty && w->output == &output)
@@ -892,9 +1120,488 @@ static bool OverDock(const SkPoint &pos) noexcept
     return !(root->layerRole() && TopbarAutoHide::IsTopbar(*root->layerRole()));
 }
 
+void Expose::setHovered(Screen &screen, size_t workspace) noexcept
+{
+    // Not the desktop (it can't be removed), nor while closing/zooming
+    if (workspace == 0 || workspace >= screen.thumbs.size() || !m_open || m_zoomThumb)
+        workspace = SIZE_MAX;
+
+    if (screen.hovered == workspace)
+        return;
+
+    screen.hovered = workspace;
+    screen.closeButton.setVisible(workspace != SIZE_MAX);
+    screen.closeShadow.setVisible(workspace != SIZE_MAX);
+
+    if (workspace == SIZE_MAX)
+        return;
+
+    // Centered on its top-left corner
+    const SkRect &r { screen.thumbs[workspace]->rect };
+    screen.closeRect = SkRect::MakeXYWH(r.x() - CloseSize / 2.f, r.y() - CloseSize / 2.f, CloseSize, CloseSize);
+    screen.closeButton.layout().setPosition(YGEdgeLeft, screen.closeRect.x());
+    screen.closeButton.layout().setPosition(YGEdgeTop, screen.closeRect.y());
+    screen.closeShadow.layout().setPosition(YGEdgeLeft, screen.closeRect.x() - CloseShadowPad);
+    screen.closeShadow.layout().setPosition(YGEdgeTop, screen.closeRect.y() - CloseShadowPad + 2); // Cast slightly down
+}
+
 bool Expose::PointerMove() noexcept
 {
-    return Active() && !OverDock(cursor()->pos());
+    if (!Active())
+        return false;
+
+    const SkPoint pos { cursor()->pos() };
+    const bool onIt { cursor()->output() == s_expose->m_output };
+
+    // Dragging a thumbnail or a window (no hover meanwhile)
+    if (s_expose->m_pressThumb)
+    {
+        s_expose->dragTo(pos);
+        return true;
+    }
+
+    if (s_expose->m_pressWindow)
+    {
+        s_expose->dragWindowTo(pos);
+        return true;
+    }
+
+    // The hovered window (not under the bar)
+    {
+        Screen *barScreen { nullptr };
+        const bool overBar { s_expose->thumbAt(pos, &barScreen) != nullptr };
+        s_expose->setHoverWindow(onIt && !overBar && s_expose->m_open && !s_expose->m_zoomThumb ? s_expose->windowAt(pos) : nullptr);
+    }
+    Expose &x { *s_expose };
+    const SkScalar p { SkScalar(std::clamp(x.m_progress, 0.0, 1.0)) };
+
+    // The hovered thumbnail (or its close button, partly outside it)
+    for (auto &screen : x.m_screens)
+    {
+        const SkIRect &r { screen->output->rect() };
+        const SkPoint bar { SkScalar(r.x()), r.y() - screen->barHeight * (1.f - p) };
+        size_t hovered { SIZE_MAX };
+
+        if (screen->hovered != SIZE_MAX && screen->closeRect.makeOffset(bar).contains(pos.x(), pos.y()))
+            hovered = screen->hovered;
+        else
+            for (auto &t : screen->thumbs)
+                if (t->rect.makeOffset(bar).contains(pos.x(), pos.y()))
+                    hovered = t->workspace;
+
+        x.setHovered(*screen, onIt ? hovered : SIZE_MAX);
+
+        // The plus button (or the new desktop peeking, while shown)
+        const bool plus { onIt && (screen->plusRect.makeOffset(bar).contains(pos.x(), pos.y()) ||
+                                   (screen->plusHovered && screen->peekRect.makeOffset(bar).contains(pos.x(), pos.y()))) };
+        x.setPlusHovered(*screen, plus);
+    }
+
+    // Other outputs: as usual
+    return onIt && !OverDock(pos);
+}
+
+void Expose::animateRemoval(Screen &screen, Thumb &thumb) noexcept
+{
+    m_removed.remove_if([](const auto &r){ return r->done; });
+
+    auto &r { m_removed.emplace_back(std::make_unique<Removed>()) };
+    const SkIRect &out { screen.output->rect() };
+    const SkScalar p { SkScalar(std::clamp(m_progress, 0.0, 1.0)) };
+    r->rect = thumb.rect.makeOffset(out.x(), out.y() - screen.barHeight * (1.f - p));
+
+    // Above everything of Exposé, clipped like the thumbnail
+    const SkRegion empty;
+    r->box.setInputRegion(&empty);
+    r->box.enableChildrenClipping(true);
+    r->box.layout().setPositionType(YGPositionTypeAbsolute);
+    r->box.setParent(&GetScene()->expose);
+
+    r->fill.setInputRegion(&empty);
+    r->fill.layout().setPositionType(YGPositionTypeAbsolute);
+    r->fill.layout().setWidthPercent(100.f);
+    r->fill.layout().setHeightPercent(100.f);
+    r->fill.setParent(&r->box);
+
+    // Its windows as laid out in it (fractions of it: they shrink with it)
+    const SkScalar w { std::max(1.f, thumb.rect.width()) }, h { std::max(1.f, thumb.rect.height()) };
+
+    for (auto &win : m_windows)
+    {
+        if (win->output != screen.output || win->workspace != thumb.workspace || !win->thumb.image())
+            continue;
+
+        auto &l { win->thumb.layout() };
+        AKImage &img { r->images.emplace_back() };
+        img.setInputRegion(&empty);
+        img.setImage(win->thumb.image());
+        img.layout().setPositionType(YGPositionTypeAbsolute);
+        img.layout().positionPercent(YGEdgeLeft, 100.f * l.calculatedLeft() / w);
+        img.layout().positionPercent(YGEdgeTop, 100.f * l.calculatedTop() / h);
+        img.layout().setWidthPercent(100.f * l.calculatedWidth() / w);
+        img.layout().setHeightPercent(100.f * l.calculatedHeight() / h);
+        img.setParent(&r->box);
+    }
+
+    Removed *raw { r.get() };
+    const auto step = [raw](Float64 t)
+    {
+        const SkScalar e { SkScalar(CZEase::OutCubic(t)) };
+        const SkScalar s { 1.f - 0.35f * e };
+        const SkRect &f { raw->rect };
+        const SkRect rect { SkRect::MakeXYWH(f.centerX() - f.width() * s * 0.5f, f.centerY() - f.height() * s * 0.5f,
+                                             f.width() * s, f.height() * s) };
+        raw->box.layout().setPosition(YGEdgeLeft, rect.x());
+        raw->box.layout().setPosition(YGEdgeTop, rect.y());
+        raw->box.layout().setWidth(std::max(1.f, rect.width()));
+        raw->box.layout().setHeight(std::max(1.f, rect.height()));
+        raw->fill.setOpacity(1.f - e);
+
+        for (AKImage &img : raw->images)
+            img.setOpacity(1.f - e);
+
+        compositor()->repaintAllOutputs();
+    };
+
+    r->anim.setDuration(RemoveMs);
+    r->anim.onUpdate.subscribe(this, [step](CZAnimation *a){ step(a->value()); });
+    r->anim.onFinish.subscribe(this, [raw, step](CZAnimation*){
+        step(1.0);
+        raw->box.setVisible(false); // Destroyed later (this may be a rendering thread)
+        raw->done = true;
+    });
+    step(0.0);
+    r->anim.start();
+}
+
+std::vector<Expose::Thumb*> Expose::shownThumbs(Screen &screen) noexcept
+{
+    std::vector<Thumb*> list;
+
+    for (auto &t : screen.thumbs)
+        if (t->box.visible())
+            list.push_back(t.get());
+
+    return list;
+}
+
+void Expose::placeThumb(Thumb &thumb, SkScalar x) noexcept
+{
+    thumb.rect.offsetTo(x, thumb.rect.y());
+    thumb.box.layout().setPosition(YGEdgeLeft, x);
+    thumb.frame.layout().setPosition(YGEdgeLeft, x - thumb.frame.thickness() - ThumbOutlineGap);
+}
+
+void Expose::dragTo(const SkPoint &pos) noexcept
+{
+    Screen &screen { *m_pressScreen };
+    Thumb &dragged { *m_pressThumb };
+
+    if (!m_dragging)
+    {
+        if (SkPoint::Distance(pos, m_pressPos) < DragThreshold)
+            return;
+
+        // Picked up: above the others, no close button meanwhile
+        m_dragging = true;
+        setHovered(screen, SIZE_MAX);
+        dragged.frame.setParent(&screen.bar);
+        dragged.box.setParent(&screen.bar);
+    }
+
+    const auto shown { shownThumbs(screen) };
+
+    if (shown.size() < 3 || screen.slots.size() != shown.size()) // Only the desktop and itself: nowhere to go
+        return;
+
+    // Following the pointer, within the fullscreen workspaces' slots (the desktop's is the first)
+    const SkScalar barX { SkScalar(screen.output->rect().x()) };
+    const SkScalar x { std::clamp(pos.x() - barX - m_grabX, screen.slots[1], screen.slots.back()) };
+    placeThumb(dragged, x);
+
+    // The slot it's closest to; the others fill the rest in order
+    size_t drop { 1 };
+
+    for (size_t i = 1; i < screen.slots.size(); i++)
+        if (std::abs(screen.slots[i] - x) < std::abs(screen.slots[drop] - x))
+            drop = i;
+
+    m_dropSlot = drop;
+    size_t slot { 1 };
+
+    for (size_t i = 1; i < shown.size(); i++)
+    {
+        if (shown[i] == &dragged)
+            continue;
+
+        if (slot == drop)
+            slot++;
+
+        placeThumb(*shown[i], screen.slots[slot++]);
+    }
+
+    compositor()->repaintAllOutputs();
+}
+
+void Expose::endPress(bool released) noexcept
+{
+    Screen *screen { m_pressScreen };
+    Thumb *thumb { m_pressThumb };
+    const bool dragged { m_dragging };
+    m_pressScreen = nullptr;
+    m_pressThumb = nullptr;
+    m_dragging = false;
+
+    if (!screen || !thumb || !released || !m_open)
+        return;
+
+    // A click: grows into it (the current one: back to it, no zoom)
+    if (!dragged)
+    {
+        if (Workspaces *ws { Workspaces::Of(screen->output) }; ws && thumb->workspace == ws->current())
+            close();
+        else
+            zoomInto(*screen, *thumb);
+        return;
+    }
+
+    // Dropped: moved there (the slot's workspace, skipping those being removed)
+    const auto shown { shownThumbs(*screen) };
+    Workspaces *ws { Workspaces::Of(screen->output) };
+
+    if (ws && m_dropSlot < shown.size())
+    {
+        // Slots count shown thumbnails only (not those being removed): the workspace in that slot
+        const size_t to { shown[m_dropSlot]->workspace };
+
+        if (thumb->workspace != to)
+            ws->move(thumb->workspace, to);
+    }
+
+    // Rebuilt in the new order
+    build();
+    apply();
+
+    for (Surface *surface : GetSurfaces())
+        surface->view.syncVisibility();
+}
+
+// Places the peek (or the new desktop growing from it) at @p rect (in the bar).
+static void PlacePeek(AKContainer &peek, AKImage &topbar, const SkRect &rect, const SkRect &outputRect, const SkRect &topbarFrom) noexcept
+{
+    peek.layout().setPosition(YGEdgeLeft, rect.x());
+    peek.layout().setPosition(YGEdgeTop, rect.y());
+    peek.layout().setWidth(std::max(1.f, rect.width()));
+    peek.layout().setHeight(std::max(1.f, rect.height()));
+
+    // Its top bar, scaled like the thumbnails'
+    const SkScalar fit { rect.width() / std::max(1.f, outputRect.width()) };
+    topbar.layout().setPosition(YGEdgeLeft, (topbarFrom.x() - outputRect.x()) * fit);
+    topbar.layout().setPosition(YGEdgeTop, (topbarFrom.y() - outputRect.y()) * fit);
+    topbar.layout().setWidth(std::max(1.f, topbarFrom.width() * fit));
+    topbar.layout().setHeight(std::max(1.f, topbarFrom.height() * fit));
+}
+
+void Expose::setPlusHovered(Screen &screen, bool hovered) noexcept
+{
+    if (m_addScreen == &screen || !m_open || m_zoomThumb)
+        hovered = m_addScreen == &screen; // Kept while it grows into the bar
+
+    if (screen.plusHovered == hovered)
+        return;
+
+    screen.plusHovered = hovered;
+    screen.peek.setVisible(hovered);
+
+    if (hovered && m_addScreen != &screen)
+    {
+        screen.peekTopbar.setImage(screen.topbarImage);
+        screen.peekTopbar.setVisible(screen.topbarImage != nullptr);
+        PlacePeek(screen.peek, screen.peekTopbar, screen.peekRect, SkRect::Make(screen.output->rect()), screen.topbarFrom);
+    }
+
+    compositor()->repaintAllOutputs();
+}
+
+void Expose::addDesktop(Screen &screen) noexcept
+{
+    if (m_addScreen)
+        return;
+
+    Workspaces *ws { Workspaces::Of(screen.output) };
+
+    if (!ws)
+        return;
+
+    // Created right away (the bar is rebuilt once it got there)
+    ws->addDesktop();
+    m_addScreen = &screen;
+    setHovered(screen, SIZE_MAX);
+
+    // The others make room: the same slots for one more, centered
+    const auto shown { shownThumbs(screen) };
+    const SkScalar barW { SkScalar(screen.output->rect().width()) };
+    const SkScalar w { screen.thumbWidth };
+    const size_t n { shown.size() + 1 };
+    const SkScalar x0 { std::round((barW - (n * w + (n - 1) * ThumbGap)) * 0.5f) };
+
+    m_addMoves.clear();
+
+    for (size_t i = 0; i < shown.size(); i++)
+        m_addMoves.push_back({ shown[i], { shown[i]->rect.x(), x0 + i * (w + ThumbGap) } });
+
+    m_addFrom = screen.peekRect;
+    m_addTo = SkRect::MakeXYWH(x0 + shown.size() * (w + ThumbGap), BarPadding, w, screen.thumbHeight);
+
+    // Above the plus button while it grows
+    screen.peek.setParent(&screen.bar);
+    screen.plusButton.setVisible(false);
+    screen.plusShadow.setVisible(false);
+
+    m_addAnim.setDuration(AddMs);
+    m_addAnim.reset();
+}
+
+void Expose::addStep(Float64 t) noexcept
+{
+    if (!m_addScreen)
+        return;
+
+    Screen &screen { *m_addScreen };
+    const SkScalar e { SkScalar(CZEase::InOutCubic(std::clamp(t, 0.0, 1.0))) };
+
+    for (auto &[thumb, x] : m_addMoves)
+        placeThumb(*thumb, x.first + (x.second - x.first) * e);
+
+    const SkRect rect { Lerp(m_addFrom, m_addTo, e) };
+    PlacePeek(screen.peek, screen.peekTopbar, rect, SkRect::Make(screen.output->rect()), screen.topbarFrom);
+    compositor()->repaintAllOutputs();
+}
+
+void Expose::setHoverWindow(Window *window) noexcept
+{
+    if (m_hoverWindow == window)
+        return;
+
+    m_hoverWindow = window;
+    placeWindowOutline();
+}
+
+void Expose::placeWindowOutline() noexcept
+{
+    Window *w { m_windowDragging ? nullptr : m_hoverWindow };
+
+    if (!w || !w->node.visible() || w->shown.isEmpty())
+    {
+        m_windowOutline.setVisible(false);
+        return;
+    }
+
+    // Around it (its corners scaled with it)
+    const SkScalar s { w->shown.width() / std::max(1.f, w->from.width()) };
+    const Int32 radius { std::max(2, Int32(std::lround(SSDTheme::BorderRadius * s))) };
+    const Int32 out { m_windowOutline.thickness() + 2 };
+    m_windowOutline.setRadius(radius + 2);
+    m_windowOutline.layout().setPosition(YGEdgeLeft, w->shown.x() - out);
+    m_windowOutline.layout().setPosition(YGEdgeTop, w->shown.y() - out);
+    m_windowOutline.layout().setWidth(w->shown.width() + 2 * out);
+    m_windowOutline.layout().setHeight(w->shown.height() + 2 * out);
+    m_windowOutline.setVisible(true);
+}
+
+void Expose::dragWindowTo(const SkPoint &pos) noexcept
+{
+    Window &w { *m_pressWindow };
+
+    if (!m_windowDragging)
+    {
+        if (SkPoint::Distance(pos, m_pressPos) < DragThreshold)
+            return;
+
+        // Picked up: above everything of Exposé (the bar too), see-through
+        m_windowDragging = true;
+        w.node.setParent(&GetScene()->expose);
+        w.node.setOpacity(DraggedOpacity);
+        placeWindowOutline();
+    }
+
+    // Following the pointer (where it was grabbed)
+    const SkRect &r { w.shown };
+    const SkRect rect { SkRect::MakeXYWH(pos.x() - m_windowGrab.x() * r.width(), pos.y() - m_windowGrab.y() * r.height(), r.width(), r.height()) };
+    const SkScalar s { rect.width() / std::max(1.f, w.from.width()) };
+    w.node.layout().setPosition(YGEdgeLeft, rect.x() - w.margins.left() * s);
+    w.node.layout().setPosition(YGEdgeTop, rect.y() - w.margins.top() * s);
+
+    // Over another desktop's thumbnail: outlined
+    Screen *screen { nullptr };
+    Thumb *thumb { thumbAt(pos, &screen) };
+    const Workspaces *ws { w.output->workspaces.get() };
+
+    if (thumb && (!ws || !ws->isDesktop(thumb->workspace) || thumb->workspace == w.workspace))
+        thumb = nullptr;
+
+    if (m_dropThumb != thumb)
+    {
+        if (m_dropThumb)
+            m_dropThumb->frame.setVisible(ws && m_dropThumb->workspace == ws->current());
+
+        m_dropThumb = thumb;
+
+        if (thumb)
+            thumb->frame.setVisible(true);
+    }
+
+    compositor()->repaintAllOutputs();
+}
+
+void Expose::endWindowPress(bool released) noexcept
+{
+    Window *w { m_pressWindow };
+    const bool dragged { m_windowDragging };
+    Thumb *drop { m_dropThumb };
+    m_pressWindow = nullptr;
+    m_windowDragging = false;
+    m_dropThumb = nullptr;
+
+    if (!w)
+        return;
+
+    w->node.setOpacity(1.f);
+
+    if (!released || !m_open)
+    {
+        if (dragged)
+            apply(); // Back where it was
+        return;
+    }
+
+    // A click: activated
+    if (!dragged)
+    {
+        close(w->toplevel.get());
+        return;
+    }
+
+    // Dropped on another desktop's thumbnail: moved there; otherwise back where it was (rebuilt)
+    Workspaces *ws { w->output->workspaces.get() };
+
+    if (drop && ws && w->toplevel)
+        w->toplevel->desktopId = ws->desktopId(drop->workspace);
+
+    build();
+    apply();
+
+    for (Surface *surface : GetSurfaces())
+        surface->view.syncVisibility();
+}
+
+void Expose::WorkspacesChanged() noexcept
+{
+    if (!Active())
+        return;
+
+    s_expose->m_rebuildPending = true;
+    compositor()->repaintAllOutputs();
 }
 
 Expose::Window *Expose::windowAt(const SkPoint &pos) noexcept
@@ -942,27 +1649,106 @@ bool Expose::PointerButton(const CZPointerButtonEvent &e) noexcept
         return false;
 
     const SkPoint pos { cursor()->pos() };
+    Expose &x { *s_expose };
 
-    if (OverDock(pos))
+    // A pressed thumbnail / window released (wherever): dropped (dragged) or clicked
+    if (e.button == BTN_LEFT && !e.pressed && x.m_pressThumb)
+    {
+        x.endPress(true);
+        return true;
+    }
+
+    if (e.button == BTN_LEFT && !e.pressed && x.m_pressWindow)
+    {
+        x.endWindowPress(true);
+        return true;
+    }
+
+    // Other outputs (and the dock): as usual
+    if (cursor()->output() != s_expose->m_output || OverDock(pos))
         return false;
+
+    if (e.button == BTN_LEFT && !e.pressed)
+        return true;
 
     if (e.button != BTN_LEFT || !e.pressed || !s_expose->m_open)
         return true;
 
-    Expose &x { *s_expose };
     Screen *screen { nullptr };
 
-    // A workspace: grows into it
-    if (Thumb *thumb { x.thumbAt(pos, &screen) })
+    // The plus button (or the new desktop peeking): adds a desktop
+    for (auto &s : x.m_screens)
     {
-        x.zoomInto(*screen, *thumb);
+        const SkIRect &r { s->output->rect() };
+        const SkPoint bar { SkScalar(r.x()), r.y() - s->barHeight * (1.f - SkScalar(std::clamp(x.m_progress, 0.0, 1.0))) };
+
+        if (s->plusHovered && !x.m_addScreen && (s->plusRect.makeOffset(bar).contains(pos.x(), pos.y()) ||
+                                                 s->peekRect.makeOffset(bar).contains(pos.x(), pos.y())))
+        {
+            x.addDesktop(*s);
+            return true;
+        }
+    }
+
+    // A close button: removes its workspace (its window back to the desktop, shown here right away)
+    for (auto &s : x.m_screens)
+    {
+        if (s->hovered == SIZE_MAX)
+            continue;
+
+        const SkIRect &r { s->output->rect() };
+        const SkPoint bar { SkScalar(r.x()), r.y() - s->barHeight * (1.f - SkScalar(std::clamp(x.m_progress, 0.0, 1.0))) };
+
+        if (!s->closeRect.makeOffset(bar).contains(pos.x(), pos.y()))
+            continue;
+
+        const size_t index { s->hovered };
+        x.setHovered(*s, SIZE_MAX);
+
+        if (index < s->thumbs.size())
+            x.animateRemoval(*s, *s->thumbs[index]);
+
+        if (Workspaces *ws { Workspaces::Of(s->output) })
+            ws->destroy(index, false);
+
+        WindowsChanged();
         return true;
     }
 
-    // A window: activated
+    // A workspace: the desktop grows into it right away, fullscreen ones on release (unless dragged)
+    if (Thumb *thumb { x.thumbAt(pos, &screen) })
+    {
+        // The current one: back to it (no zoom)
+        if (Workspaces *ws { Workspaces::Of(screen->output) }; ws && thumb->workspace == ws->current())
+        {
+            x.close();
+            return true;
+        }
+
+        if (thumb->workspace == 0)
+        {
+            x.zoomInto(*screen, *thumb);
+            return true;
+        }
+
+        const SkIRect &r { screen->output->rect() };
+        const SkScalar barX { SkScalar(r.x()) };
+        x.m_pressScreen = screen;
+        x.m_pressThumb = thumb;
+        x.m_pressPos = pos;
+        x.m_grabX = pos.x() - barX - thumb->rect.x();
+        x.m_dragging = false;
+        return true;
+    }
+
+    // A window: activated on release (unless dragged)
     if (Window *w { x.windowAt(pos) })
     {
-        x.close(w->toplevel.get());
+        x.m_pressWindow = w;
+        x.m_pressPos = pos;
+        x.m_windowDragging = false;
+        x.m_windowGrab = SkPoint::Make((pos.x() - w->shown.x()) / std::max(1.f, w->shown.width()),
+                                       (pos.y() - w->shown.y()) / std::max(1.f, w->shown.height()));
         return true;
     }
 

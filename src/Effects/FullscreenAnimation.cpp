@@ -2,6 +2,7 @@
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
+#include <Effects/Snapshot.h>
 #include <Core/Workspaces.h>
 #include <Decorations/SSDTheme.h>
 #include <Decorations/SSD.h>
@@ -24,28 +25,11 @@ static std::list<std::unique_ptr<FullscreenAnimation>> &Animations() noexcept
     return list;
 }
 
-// Main thread snapshots (the one of MinimizeAnimation is used from the rendering threads).
-struct BakeScene
-{
-    BakeScene() noexcept
-    {
-        scene = AKScene::Make();
-        scene->setRoot(&root);
-        target = scene->makeTarget();
-        target->setClearColor(SK_ColorTRANSPARENT);
-    }
-
-    std::shared_ptr<AKScene> scene;
-    AKContainer root { YGFlexDirectionColumn, false };
-    std::shared_ptr<AKTarget> target;
-};
-
-static std::unique_ptr<BakeScene> s_bake;
 
 void FullscreenAnimation::Clear() noexcept
 {
     Animations().clear();
-    s_bake.reset();
+    Snapshot::Clear();
 }
 
 static SkRect Lerp(const SkRect &a, const SkRect &b, SkScalar t) noexcept
@@ -84,15 +68,18 @@ void FullscreenAnimation::StateApplied(ToplevelRole &toplevel) noexcept
         if (a->m_finished || a->m_toplevel.get() != &toplevel || a->m_applied)
             continue;
 
+        // Baked on the next frame, once the commit is fully processed (its new buffer in place).
+        // Not with a main thread timer: those can be delayed while the outputs repaint.
         a->m_applied = true;
-
-        // Once the commit is fully processed (its new buffer in place)
-        CZWeak<FullscreenAnimation> weak { a.get() };
-        CZTimer::OneShot(0, [weak](CZTimer*){
-            if (weak && !weak->m_finished)
-                weak->bakeNew();
-        });
+        compositor()->repaintAllOutputs();
     }
+}
+
+void FullscreenAnimation::ProcessPending() noexcept
+{
+    for (auto &a : Animations())
+        if (a->m_applied && !a->m_hasNew && !a->m_finished)
+            a->bakeNew();
 }
 
 bool FullscreenAnimation::HidesSurface(const LSurface *surface) noexcept
@@ -126,7 +113,7 @@ FullscreenAnimation::FullscreenAnimation(ToplevelRole &toplevel, bool entering, 
         m_target = prev.isEmpty() ? m_from : SkRect::Make(SkIRect::MakeXYWH(prev.x(), prev.y(), prev.width(), prev.height() + titlebar));
     }
 
-    auto image { Bake(toplevel, m_scale, m_oldMargins) };
+    auto image { Snapshot::Toplevel(toplevel, m_scale, m_oldMargins) };
 
     if (!image)
         return;
@@ -231,7 +218,7 @@ void FullscreenAnimation::bakeNew() noexcept
     if (m_hasNew || !m_toplevel)
         return;
 
-    auto image { Bake(*m_toplevel.get(), m_scale, m_newMargins) };
+    auto image { Snapshot::Toplevel(*m_toplevel.get(), m_scale, m_newMargins) };
 
     if (!image)
         return;
@@ -244,74 +231,3 @@ void FullscreenAnimation::bakeNew() noexcept
     compositor()->repaintAllOutputs();
 }
 
-std::shared_ptr<RImage> FullscreenAnimation::Bake(ToplevelRole &toplevel, Int32 scale, SkIRect &margins) noexcept
-{
-    auto *surface { static_cast<Surface*>(toplevel.surface()) };
-    const Int32 titlebar { toplevel.titlebarHeight() };
-
-    // The decorations' shadow (when shown, see SSD::update())
-    margins.setEmpty();
-    const SkISize min { SSD::MinSize() };
-
-    if (toplevel.ssd() && !toplevel.isFullscreen() &&
-        surface->size().width() >= min.width() && surface->size().height() >= min.height())
-    {
-        const auto sm { SSDTheme::Margins(toplevel.isActivated()) };
-        margins = SkIRect::MakeLTRB(sm.left, sm.top, sm.right, sm.bottom);
-    }
-
-    const SkISize size { surface->size().width() + margins.left() + margins.right(),
-                         surface->size().height() + titlebar + margins.top() + margins.bottom() };
-
-    if (surface->size().isEmpty() || !surface->image())
-        return nullptr;
-
-    if (!s_bake)
-        s_bake = std::make_unique<BakeScene>();
-
-    auto &aux { *s_bake };
-    SurfaceView &view { surface->view };
-
-    // The view (with its subsurfaces and decorations) at the origin of the auxiliary scene, without
-    // its popups and child windows (they aren't part of the window)
-    AKNode *parent { view.parent() };
-    AKNode *next { view.next() };
-    const bool wasVisible { view.visible() };
-    const bool popupsVisible { view.popups.visible() };
-    const bool toplevelsVisible { view.toplevels.visible() };
-
-    view.popups.setVisible(false);
-    view.toplevels.setVisible(false);
-    view.setVisible(true);
-    view.setParent(&aux.root);
-    view.layout().setPosition(YGEdgeLeft, margins.left());
-    view.layout().setPosition(YGEdgeTop, titlebar + margins.top());
-
-    aux.root.layout().setWidth(size.width());
-    aux.root.layout().setHeight(size.height());
-
-    auto image { RSurface::Make(size, scale, true) };
-    bool ok { false };
-
-    if (image)
-    {
-        aux.target->surface = image;
-        aux.target->age = 0;
-        aux.target->setBakedNodesScale(scale);
-        ok = aux.scene->render(aux.target);
-        aux.target->surface.reset();
-    }
-
-    if (next && next->parent() == parent)
-        view.insertBefore(next);
-    else
-        view.setParent(parent);
-
-    view.popups.setVisible(popupsVisible);
-    view.toplevels.setVisible(toplevelsVisible);
-    view.setVisible(wasVisible);
-    view.syncPos();
-    view.syncVisibility();
-
-    return ok && image ? image->image() : nullptr;
-}

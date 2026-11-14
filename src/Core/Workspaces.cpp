@@ -5,6 +5,7 @@
 #include <Scene/Scene.h>
 #include <Seat/Output.h>
 #include <Effects/TopbarAutoHide.h>
+#include <Effects/Expose.h>
 #include <Louvre/LCompositor.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
@@ -301,6 +302,37 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
     }
 }
 
+void Workspaces::showCurrent() noexcept
+{
+    m_spring.pause();
+    m_pos = Float64(m_current);
+    removeClosed();
+    onPosChanged();
+}
+
+void Workspaces::jumpTo(Int64 index, bool show) noexcept
+{
+    index = std::clamp<Int64>(index, 0, Int64(m_spaces.size()) - 1);
+    const bool changed { size_t(index) != m_current };
+    m_current = size_t(index);
+
+    if (changed)
+        seat()->dismissPopups();
+
+    m_spring.pause();
+
+    if (show)
+        showCurrent();
+    else
+        onPosChanged();
+
+    if (changed)
+    {
+        activateCurrent();
+        TopbarAutoHide::UpdateAll();
+    }
+}
+
 void Workspaces::startSpring(Float64 target, Float64 velocity, Float64 stiffness) noexcept
 {
     if (std::abs(m_pos - target) < 0.0005 && std::abs(velocity) < 0.01)
@@ -381,6 +413,7 @@ void Workspaces::onPosChanged() noexcept
     for (Surface *surface : GetSurfaces())
         surface->view.syncVisibility();
 
+    Expose::WorkspacesMoved(); // Its layouts slide too
     m_output.repaint();
 }
 

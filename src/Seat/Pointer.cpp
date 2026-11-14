@@ -1,3 +1,4 @@
+#include <cmath>
 #include <Louvre/Cursor/LShapeCursorSource.h>
 #include <Louvre/Cursor/LCursor.h>
 #include <Core/Events/CZPointerSwipeUpdateEvent.h>
@@ -15,6 +16,7 @@
 #include <Decorations/SSD.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 #include <Core/Events/CZPointerSwipeBeginEvent.h>
 #include <Core/Events/CZPointerSwipeEndEvent.h>
 #include <Louvre/Seat/LDND.h>
@@ -48,6 +50,23 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 {
     // Top bars hidden by fullscreen windows: revealed at the top edge, hidden when left
     struct AtExit { ~AtExit() { TopbarAutoHide::PointerMoved(); } } atExit;
+
+    // Exposé takes the pointer (but over the dock): no client gets it
+    if (Expose::Active() && !draggingSurface() && !seat()->dnd()->dragging())
+    {
+        const SkPoint prev { cursor()->pos() };
+        cursor()->move(e.delta.x(), e.delta.y());
+
+        if (Expose::PointerMove())
+        {
+            cursor()->repaintOutputs(true);
+            setFocus(nullptr);
+            SetShapeCursor(CZCursorShape::Default);
+            return;
+        }
+
+        cursor()->setPos(prev);
+    }
 
     auto kay { AKApp::Get() };
     auto scene { GetScene()->scene };
@@ -115,6 +134,9 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 
 void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 {
+    if (!seat()->dnd()->dragging() && !draggingSurface() && Expose::PointerButton(e))
+        return;
+
     if (!focus() && !seat()->dnd()->dragging())
     {
         // Louvre doesn't stop move/resize sessions without a focused surface (e.g. started from the
@@ -168,20 +190,80 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
     CZCore::Get()->sendEvent(e, *AKApp::Get());
 }
 
+// Three finger swipes: the first few units decide. Horizontal ones switch workspaces (see
+// Workspaces), vertical ones open/close Exposé (see Expose). Others go to clients.
+enum class SwipeAxis { None, Undecided, Horizontal, Vertical };
+static SwipeAxis s_swipeAxis { SwipeAxis::None };
+static SkPoint s_swipeStart {};
+static constexpr SkScalar SwipeDecideDistance { 12.f };
+
 void Pointer::pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e)
 {
-    if (!Workspaces::SwipeBegin(e.fingers))
+    if (e.fingers != 3)
+    {
         LPointer::pointerSwipeBeginEvent(e);
+        return;
+    }
+
+    s_swipeAxis = SwipeAxis::Undecided;
+    s_swipeStart = SkPoint::Make(0, 0);
 }
 
 void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
 {
-    if (!Workspaces::SwipeUpdate(e.fingers, e.delta))
+    switch (s_swipeAxis)
+    {
+    case SwipeAxis::None:
         LPointer::pointerSwipeUpdateEvent(e);
+        return;
+    case SwipeAxis::Undecided:
+    {
+        s_swipeStart += e.delta;
+
+        if (s_swipeStart.length() < SwipeDecideDistance)
+            return;
+
+        // Sideways switches workspaces (Exposé too, see Expose), up/down opens/closes Exposé
+        if (std::abs(s_swipeStart.x()) > std::abs(s_swipeStart.y()))
+        {
+            s_swipeAxis = SwipeAxis::Horizontal;
+            Workspaces::SwipeBegin(3);
+            Workspaces::SwipeUpdate(3, s_swipeStart);
+        }
+        else
+        {
+            s_swipeAxis = SwipeAxis::Vertical;
+            Expose::SwipeBegin();
+            Expose::SwipeUpdate(s_swipeStart);
+        }
+        return;
+    }
+    case SwipeAxis::Horizontal:
+        Workspaces::SwipeUpdate(e.fingers, e.delta);
+        return;
+    case SwipeAxis::Vertical:
+        Expose::SwipeUpdate(e.delta);
+        return;
+    }
 }
 
 void Pointer::pointerSwipeEndEvent(const CZPointerSwipeEndEvent &e)
 {
-    if (!Workspaces::SwipeEnd(e.cancelled))
+    const SwipeAxis axis { s_swipeAxis };
+    s_swipeAxis = SwipeAxis::None;
+
+    switch (axis)
+    {
+    case SwipeAxis::None:
         LPointer::pointerSwipeEndEvent(e);
+        break;
+    case SwipeAxis::Horizontal:
+        Workspaces::SwipeEnd(e.cancelled);
+        break;
+    case SwipeAxis::Vertical:
+        Expose::SwipeEnd(e.cancelled);
+        break;
+    default:
+        break;
+    }
 }

@@ -34,6 +34,7 @@
 #include <Effects/MinimizeAnimation.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 
 #include <RResourceTracker.h>
 
@@ -232,6 +233,7 @@ void Crystals::uninitialized() noexcept
     Volume::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
+    Expose::Clear();
     FullscreenAnimation::Clear();
     Workspaces::Clear();
     DNDReturnAnimation::Clear();

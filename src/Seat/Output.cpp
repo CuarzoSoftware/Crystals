@@ -12,6 +12,7 @@
 #include <Effects/MinimizeAnimation.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
@@ -52,6 +53,10 @@ void Output::paintGL()
     // Bake (un)minimizing toplevels (needs this thread's GL context) before rendering.
     MinimizeAnimation::ProcessPending(*this);
 
+    // Exposé / fullscreen animations: snapshots of the windows that drew
+    Expose::ProcessPending(*this);
+    FullscreenAnimation::ProcessPending();
+
     auto surface { RSurface::WrapImage(image()) };
     surface->setGeometry({
         .viewport = SkRect::Make(rect()),
@@ -77,7 +82,9 @@ void Output::paintGL()
     // Keep repainting only while animations are actually running. animationCount() also counts
     // stopped-but-still-registered (non-oneshot) animations, which would busy-loop repaints at the
     // display's refresh rate forever (burning CPU at idle).
-    if (core->hasRunningAnimations())
+    // Exposé: every frame, so the windows it shows (hidden, through their snapshots) keep getting
+    // their frame callbacks and drawing (see handleSurfaceCallbacks())
+    if (core->hasRunningAnimations() || Expose::Active())
         repaint();
 }
 
@@ -169,14 +176,16 @@ void Output::handleSurfaceCallbacks() noexcept
         const bool idleCommit { !surface->hasDamage() && surface->view.visible() && !surface->view.intersectedTargets().empty() };
 
         // Drawn by a fullscreen animation: it keeps drawing (its new size is awaited)
-        if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole() || FullscreenAnimation::WantsFrames(surface))
+        if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole() ||
+            FullscreenAnimation::WantsFrames(surface) || Expose::WantsFrames(surface))
         {
             surface->view.view.clearRenderedOnLastTarget();
             surface->requestNextFrame();
         }
 
         // Hidden top bars (see TopbarAutoHide) stay on their output (e.g. keeping their scale)
-        if (TopbarAutoHide::HidesSurface(surface) || Workspaces::IsParked(surface) || FullscreenAnimation::HidesSurface(surface))
+        if (TopbarAutoHide::HidesSurface(surface) || Workspaces::IsParked(surface) || FullscreenAnimation::HidesSurface(surface) ||
+            Expose::HidesSurface(surface))
             continue;
 
         bool outputFound;

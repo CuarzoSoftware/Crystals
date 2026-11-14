@@ -5,8 +5,9 @@
 #include <Scene/Scene.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 
-void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); }
+void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); Expose::SurfaceDamaged(this); }
 void Surface::opaqueRegionChanged()     { view.syncOpaqueRegion(); }
 void Surface::invisibleRegionChanged()  { view.syncInvisibleRegion(); }
 void Surface::inputRegionChanged()      { view.syncInputRegion(); }
@@ -83,7 +84,10 @@ void Surface::mappingChanged()
     GetCompositor()->restack();
 
     if (toplevel())
+    {
         Workspaces::Sync(*static_cast<ToplevelRole*>(toplevel()));
+        Expose::WindowsChanged();
+    }
 
     TopbarAutoHide::UpdateAll();
 

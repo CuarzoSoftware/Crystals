@@ -4,6 +4,7 @@
 #include <Effects/TopbarAutoHide.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 #include <Core/Client.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
@@ -310,6 +311,7 @@ void ToplevelRole::minimizedChanged()
 
     surf->view.syncVisibility();
     Workspaces::Sync(*this);
+    Expose::WindowsChanged();
     TopbarAutoHide::UpdateAll();
 }
 

@@ -111,6 +111,7 @@ public:
 
     /* -------------------------------- Per output -------------------------------- */
 
+    Output &output() const noexcept { return m_output; }
     size_t count() const noexcept { return m_spaces.size(); }
     size_t current() const noexcept { return m_current; }
 
@@ -122,6 +123,18 @@ public:
 
     /// Slides to workspace @p index (clamped), activating its window(s).
     void switchTo(Int64 index, Float64 velocity = 0.0, Float64 stiffness = SpringStiffness) noexcept;
+
+    /**
+     * @brief Like switchTo() without sliding (e.g. Exposé zooms into it instead).
+     *
+     * @param show Whether it's shown right away. Otherwise the workspace that was shown stays in
+     *             view (its windows parked, but drawn where they were) until showCurrent().
+     */
+    void jumpTo(Int64 index, bool show = true) noexcept;
+
+    /// Shows the current workspace right away (see jumpTo()). Only visual (any thread, like the
+    /// slide's steps).
+    void showCurrent() noexcept;
 
     /// Whether it's sliding (or being swiped).
     bool moving() const noexcept;

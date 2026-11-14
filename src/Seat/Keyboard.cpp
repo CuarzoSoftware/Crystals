@@ -10,6 +10,7 @@
 #include <AK/AKApp.h>
 #include <Decorations/SSD.h>
 #include <Core/Workspaces.h>
+#include <Effects/Expose.h>
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {
@@ -17,8 +18,9 @@ void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
     if (Volume::Get().keyEvent(e.code, e.isPressed))
         return;
 
-    // Ctrl+Super+Left/Right: switch workspaces, never sent to clients
-    if (Workspaces::KeyEvent(e))
+    // Ctrl+Super+Up/Down (Exposé), Escape while it's shown, Ctrl+Super+Left/Right (workspaces):
+    // never sent to clients
+    if (Expose::KeyEvent(e) || Workspaces::KeyEvent(e))
         return;
 
     LKeyboard::keyEvent(e);

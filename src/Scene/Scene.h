@@ -18,6 +18,7 @@ using namespace CZ;
  * - layers: one per Louvre layer (background ... overlay), the surfaces of each.
  * - animations: windows (un)minimizing, flying to/from the dock.
  * - shell: the desktop shell's panels (docks, Firmament's top bar), above every other surface.
+ * - expose: Exposé (see Expose), above the shell but the dock (input), below popups.
  * - popups: popups (menus, tooltips) of any surface, above everything else (nested popups inside
  *   their parent popup). Input matches (see Seat::surfaceAt()).
  * - top: above everything (drag & drop icons).
@@ -48,6 +49,7 @@ public:
     std::array<AKContainer, LayerLast> layers;
     AKContainer animations;
     AKContainer shell;
+    AKContainer expose;
     AKContainer popups;
     AKContainer top;
 

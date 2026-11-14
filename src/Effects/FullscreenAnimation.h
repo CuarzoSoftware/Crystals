@@ -17,7 +17,7 @@
  * or back to a window), that frame is snapshotted too and fades in over the first one. The window
  * itself is hidden meanwhile and shown when it ends.
  *
- * Snapshots are baked on the main thread (an auxiliary scene, like MinimizeAnimation's).
+ * Snapshots are baked on the main thread (see Snapshot).
  */
 class FullscreenAnimation final : public CZObject
 {
@@ -41,6 +41,9 @@ public:
     /// Whether frames of @p surface must keep being requested (it's drawn by an animation).
     static bool WantsFrames(const LSurface *surface) noexcept { return HidesSurface(surface); }
 
+    /// Snapshots the new frames of windows whose state was applied (Output::paintGL(), before rendering).
+    static void ProcessPending() noexcept;
+
     static void Clear() noexcept;
 
     ~FullscreenAnimation();
@@ -51,9 +54,6 @@ private:
     void finish() noexcept;
     void bakeNew() noexcept;
     SkRect targetRect() const noexcept;
-    /// The window as shown (decorations and their shadow included). @p margins: the shadow's room
-    /// around the window (title bar + content) in the image.
-    static std::shared_ptr<RImage> Bake(ToplevelRole &toplevel, Int32 scale, SkIRect &margins) noexcept;
     void place(AKImage &node, const SkRect &window, const SkIRect &margins) noexcept;
 
     CZWeak<ToplevelRole> m_toplevel;

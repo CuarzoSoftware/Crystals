@@ -179,7 +179,9 @@ void FullscreenAnimation::update() noexcept
         fade = std::clamp(SkScalar(ms - m_newMs) / SkScalar(span), 0.f, 1.f);
     }
 
-    m_old.setOpacity(1.f - fade);
+    // Entering fullscreen: the first frame stays opaque under the new one fading in. Leaving it:
+    // crossfaded (the first frame out, the new one in)
+    m_old.setOpacity(m_entering ? 1.f : 1.f - fade);
     m_new.setOpacity(fade);
 
     // Done once it got there, faded, and its workspace stopped sliding (the window is right there)

@@ -195,6 +195,8 @@ void Expose::snapshot(Window &w) noexcept
     w.thumb.addDamage(AK_IRECT_INF);
 }
 
+static std::shared_ptr<RImage> CloseShadowImage(std::unordered_map<Int32, std::shared_ptr<RImage>> &cache, Int32 scale) noexcept;
+
 void Expose::build() noexcept
 {
     // Thumbnails are recreated: a press in progress is dropped, an addition finished
@@ -241,6 +243,16 @@ void Expose::build() noexcept
             w->laidOut = ws->isDesktop(index);
             w->from = WindowRect(*toplevel);
 
+            // The window itself: its title bar and content (server-side), or its geometry (the
+            // client's decorations, without their shadows)
+            const SkIRect &geo { toplevel->windowGeometry() };
+            const Int32 titlebar { toplevel->titlebarHeight() };
+
+            if (titlebar > 0 || geo.isEmpty())
+                w->geometry = SkRect::MakeWH(w->from.width(), w->from.height());
+            else
+                w->geometry = SkRect::Make(geo);
+
             const SkRegion empty;
 
             for (AKImage *node : { &w->node, &w->thumb })
@@ -268,6 +280,27 @@ void Expose::build() noexcept
     m_windowOutline.layout().setPositionType(YGPositionTypeAbsolute);
     m_windowOutline.setVisible(false);
     m_windowOutline.setParent(&layer);
+
+    // The hovered window's close button (like the thumbnails')
+    const bool dark { GetCompositor()->colorScheme() == CZColorScheme::Dark };
+    m_windowCloseShadow.setInputRegion(&noInput);
+    m_windowCloseShadow.setImage(CloseShadowImage(m_closeShadows, std::max(1, Int32(std::ceil(m_output ? m_output->scale() : 1.f)))));
+    m_windowCloseShadow.layout().setPositionType(YGPositionTypeAbsolute);
+    m_windowCloseShadow.layout().setWidth(CloseSize + 2 * CloseShadowPad);
+    m_windowCloseShadow.layout().setHeight(CloseSize + 2 * CloseShadowPad);
+    m_windowCloseShadow.setVisible(false);
+    m_windowCloseShadow.setParent(&layer);
+    m_windowClose.setBackgroundColor(dark ? 0xFF5A5A5E : 0xFFF2F2F7);
+    m_windowClose.setInputRegion(&noInput);
+    m_windowClose.layout().setPositionType(YGPositionTypeAbsolute);
+    m_windowClose.layout().setWidth(CloseSize);
+    m_windowClose.layout().setHeight(CloseSize);
+    m_windowClose.layout().setJustifyContent(YGJustifyCenter);
+    m_windowClose.layout().setAlignItems(YGAlignCenter);
+    m_windowCloseIcon.setInputRegion(&noInput);
+    m_windowCloseIcon.setColor(dark ? 0xFFEBEBF0 : 0xFF48484A);
+    m_windowClose.setVisible(false);
+    m_windowClose.setParent(&layer);
 
     // Its bar (above the windows)
     if (m_output)
@@ -1170,7 +1203,18 @@ bool Expose::PointerMove() noexcept
     {
         Screen *barScreen { nullptr };
         const bool overBar { s_expose->thumbAt(pos, &barScreen) != nullptr };
-        s_expose->setHoverWindow(onIt && !overBar && s_expose->m_open && !s_expose->m_zoomThumb ? s_expose->windowAt(pos) : nullptr);
+        Window *hover { nullptr };
+
+        if (onIt && !overBar && s_expose->m_open && !s_expose->m_zoomThumb)
+        {
+            // Over its close button (partly outside it): still that one
+            if (s_expose->m_hoverWindow && s_expose->m_windowClose.visible() && s_expose->m_windowCloseRect.contains(pos.x(), pos.y()))
+                hover = s_expose->m_hoverWindow;
+            else
+                hover = s_expose->windowAt(pos);
+        }
+
+        s_expose->setHoverWindow(hover);
     }
     Expose &x { *s_expose };
     const SkScalar p { SkScalar(std::clamp(x.m_progress, 0.0, 1.0)) };
@@ -1487,6 +1531,14 @@ void Expose::setHoverWindow(Window *window) noexcept
     placeWindowOutline();
 }
 
+SkRect Expose::windowGeometryShown(const Window &w) const noexcept
+{
+    // Its geometry within where it's drawn (scaled with it)
+    const SkScalar s { w.shown.width() / std::max(1.f, w.from.width()) };
+    return SkRect::MakeXYWH(w.shown.x() + w.geometry.x() * s, w.shown.y() + w.geometry.y() * s,
+                            w.geometry.width() * s, w.geometry.height() * s);
+}
+
 void Expose::placeWindowOutline() noexcept
 {
     Window *w { m_windowDragging ? nullptr : m_hoverWindow };
@@ -1494,19 +1546,31 @@ void Expose::placeWindowOutline() noexcept
     if (!w || !w->node.visible() || w->shown.isEmpty())
     {
         m_windowOutline.setVisible(false);
+        m_windowClose.setVisible(false);
+        m_windowCloseShadow.setVisible(false);
         return;
     }
 
-    // Around it (its corners scaled with it)
+    // Around the window itself (its corners scaled with it)
+    const SkRect g { windowGeometryShown(*w) };
     const SkScalar s { w->shown.width() / std::max(1.f, w->from.width()) };
     const Int32 radius { std::max(2, Int32(std::lround(SSDTheme::BorderRadius * s))) };
     const Int32 out { m_windowOutline.thickness() + 2 };
     m_windowOutline.setRadius(radius + 2);
-    m_windowOutline.layout().setPosition(YGEdgeLeft, w->shown.x() - out);
-    m_windowOutline.layout().setPosition(YGEdgeTop, w->shown.y() - out);
-    m_windowOutline.layout().setWidth(w->shown.width() + 2 * out);
-    m_windowOutline.layout().setHeight(w->shown.height() + 2 * out);
+    m_windowOutline.layout().setPosition(YGEdgeLeft, g.x() - out);
+    m_windowOutline.layout().setPosition(YGEdgeTop, g.y() - out);
+    m_windowOutline.layout().setWidth(g.width() + 2 * out);
+    m_windowOutline.layout().setHeight(g.height() + 2 * out);
     m_windowOutline.setVisible(true);
+
+    // Its close button, centered on its top-left corner
+    m_windowCloseRect = SkRect::MakeXYWH(g.x() - CloseSize / 2.f, g.y() - CloseSize / 2.f, CloseSize, CloseSize);
+    m_windowClose.layout().setPosition(YGEdgeLeft, m_windowCloseRect.x());
+    m_windowClose.layout().setPosition(YGEdgeTop, m_windowCloseRect.y());
+    m_windowCloseShadow.layout().setPosition(YGEdgeLeft, m_windowCloseRect.x() - CloseShadowPad);
+    m_windowCloseShadow.layout().setPosition(YGEdgeTop, m_windowCloseRect.y() - CloseShadowPad + 2);
+    m_windowClose.setVisible(true);
+    m_windowCloseShadow.setVisible(true);
 }
 
 void Expose::dragWindowTo(const SkPoint &pos) noexcept
@@ -1616,7 +1680,13 @@ Expose::Window *Expose::windowAt(const SkPoint &pos) noexcept
         if (!w.laidOut || !ws || w.workspace != ws->current())
             continue;
 
-        if (Lerp(w.from, w.slot, p).makeOffset(SkScalar(ws->slideX(w.workspace)), 0.f).contains(pos.x(), pos.y()))
+        // The window itself (not client-drawn shadows)
+        const SkRect r { Lerp(w.from, w.slot, p).makeOffset(SkScalar(ws->slideX(w.workspace)), 0.f) };
+        const SkScalar sc { r.width() / std::max(1.f, w.from.width()) };
+        const SkRect g { SkRect::MakeXYWH(r.x() + w.geometry.x() * sc, r.y() + w.geometry.y() * sc,
+                                          w.geometry.width() * sc, w.geometry.height() * sc) };
+
+        if (g.contains(pos.x(), pos.y()))
             return it->get();
     }
 
@@ -1738,6 +1808,15 @@ bool Expose::PointerButton(const CZPointerButtonEvent &e) noexcept
         x.m_pressPos = pos;
         x.m_grabX = pos.x() - barX - thumb->rect.x();
         x.m_dragging = false;
+        return true;
+    }
+
+    // A window's close button: asked to close (Exposé rebuilds once it's gone)
+    if (x.m_hoverWindow && x.m_windowClose.visible() && x.m_windowCloseRect.contains(pos.x(), pos.y()))
+    {
+        if (ToplevelRole *toplevel { x.m_hoverWindow->toplevel.get() })
+            toplevel->close();
+
         return true;
     }
 

@@ -38,7 +38,8 @@
  *   workspace thumbnail or nowhere. A thumbnail grows from the bar until it fills the screen,
  *   becoming that workspace (switched to right away, hidden meanwhile, see Workspaces::jumpTo());
  *   the current one's just closes it.
- * - Hovering a window outlines it; dragging it onto another desktop's thumbnail moves it there
+ * - Hovering a window outlines it (its geometry, not client-drawn shadows) and shows a close button
+ *   on its corner (asks it to close); dragging it onto another desktop's thumbnail moves it there
  *   (elsewhere: back where it was).
  * - A sideways three finger swipe (or Ctrl+Super+Left/Right) switches workspaces meanwhile: each
  *   workspace's windows are laid out on their own and slide with it (the bar stays, its outline
@@ -167,6 +168,7 @@ private:
         SkIRect margins {};       // Shadow room in the image
         SkRect from {}, slot {};  // Its rect on screen and in the layout (title bar + content)
         SkRect shown {};          // Where it's drawn now (see apply())
+        SkRect geometry {};       // The window itself within `from` (relative): without client-drawn shadows
         AKImage node;             // Moving to its slot
         AKImage thumb;            // In its workspace's thumbnail
     };
@@ -262,6 +264,11 @@ private:
 
     // Hovered window (outlined) and a window pressed: a click activates it, a drag moves it
     AKOutline m_windowOutline;
+    AKImage m_windowCloseShadow;
+    AKRoundSolidColor m_windowClose { SK_ColorWHITE, CZBorderRadius::Make(CloseSize / 2) };
+    AKFontIcon m_windowCloseIcon { "close", UInt32(CloseSize * 0.65f), &m_windowClose };
+    SkRect m_windowCloseRect {};   // Global
+    SkRect windowGeometryShown(const Window &w) const noexcept;
     Window *m_hoverWindow { nullptr };
     Window *m_pressWindow { nullptr };
     SkPoint m_windowGrab {};       // Pointer inside it, as a fraction of its rect

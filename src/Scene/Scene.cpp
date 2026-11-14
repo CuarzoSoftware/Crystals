@@ -20,7 +20,7 @@ Scene::Scene() noexcept
     for (auto &layer : layers)
         containers.push_back(&layer);
 
-    containers.insert(containers.end(), { &animations, &shell, &top });
+    containers.insert(containers.end(), { &animations, &shell, &popups, &top });
 
     for (AKContainer *container : containers)
     {
@@ -29,7 +29,7 @@ Scene::Scene() noexcept
     }
 
     // Their surfaces (or animations) may be anywhere
-    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &top })
+    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &popups, &top })
         container->enableChildrenClipping(false);
 
     auto core { CZCore::Get() };

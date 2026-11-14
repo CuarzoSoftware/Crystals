@@ -18,7 +18,10 @@ void LayerRole::stateChanged(CZBitset<Changes> changes, const State &prev) noexc
 
     // The scope may have changed (desktop, shell)
     if (auto *surf { static_cast<Surface*>(surface()) }; surf && !surf->parent())
+    {
         surf->view.setParent(&GetScene()->containerFor(*surf));
+        surf->view.syncOpaqueRegion(); // The desktop: always opaque
+    }
 
     GetCompositor()->restack();
     TopbarAutoHide::UpdateAll(); // May have become (or stopped being) a top bar

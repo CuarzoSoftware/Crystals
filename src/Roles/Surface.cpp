@@ -36,7 +36,8 @@ void Surface::parentChanged() noexcept
             view.setParent(&p->view.toplevels);
             break;
         case Role::Popup:
-            view.setParent(&p->view.popups);
+            // Above everything (see Scene); popups of popups inside their parent
+            view.setParent(p->popup() ? &p->view.popups : &GetScene()->popups);
             break;
         case Role::Subsurface:
             view.setParent(&p->view.above);

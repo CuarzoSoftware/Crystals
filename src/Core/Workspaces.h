@@ -39,8 +39,8 @@ public:
     /// Spring of the slide between workspaces (critically damped, ~0.5 s).
     static constexpr Float64 SpringStiffness { 15000.0 };
 
-    /// Slightly faster when a window enters/leaves fullscreen (FullscreenAnimation follows it).
-    static constexpr Float64 FullscreenStiffness { 20000.0 };
+    /// A bit softer when a window enters/leaves fullscreen (FullscreenAnimation follows it, ~0.65 s).
+    static constexpr Float64 FullscreenStiffness { 12500.0 };
 
     /// Stiffer spring following the fingers while swiping (smooths fast movements, ~0.1 s lag).
     static constexpr Float64 SwipeFollowStiffness { 90000.0 };

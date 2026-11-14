@@ -24,6 +24,9 @@ public:
     void syncSrcRect() noexcept;
     void syncVisibility() noexcept;
 
+    /// Whether it should be drawn (ignoring its window, for popups: see syncVisibility()).
+    bool shown() const noexcept;
+
     /**
      * @brief Rounds the bottom corners of the content by @p radius (0 = square), e.g. server-side
      *        decorated toplevels (their top corners are under the title bar).
@@ -33,6 +36,9 @@ public:
      * quarter disk; the rest is drawn as usual (and keeps its opaque region).
      */
     void setBottomRadius(Int32 radius) noexcept;
+
+    /// The background blur gets the rounded bottom corners too (see SurfaceBlurManager::updateClip()).
+    void syncBlurClip() noexcept;
     Int32 bottomRadius() const noexcept { return m_bottomRadius; }
 
     Surface &surface;

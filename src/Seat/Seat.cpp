@@ -1,3 +1,5 @@
+#include <Louvre/Roles/LSubsurfaceRole.h>
+#include <Louvre/Roles/LPopupRole.h>
 #include <Louvre/Roles/LBackgroundBlur.h>
 #include <Louvre/Backends/LBackend.h>
 
@@ -79,4 +81,63 @@ void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
 void Seat::inputEvent(const CZInputEvent &e) noexcept
 {
     LSeat::inputEvent(e);
+}
+
+// A popup's tree like LSeat::surfaceAt(): its popups, subsurfaces above, itself, subsurfaces below.
+static LSurface *SubsurfacesAt(const std::vector<LSubsurfaceRole*> &list, SkIPoint p) noexcept
+{
+    for (auto it = list.rbegin(); it != list.rend(); it++)
+    {
+        LSurface *s { (*it)->surface() };
+
+        if (!s->mapped())
+            continue;
+
+        if (LSurface *hit { SubsurfacesAt(s->subsurfacesAbove(), p) })
+            return hit;
+
+        if (s->inputRegionContainsGlobalPoint(p))
+            return s;
+
+        if (LSurface *hit { SubsurfacesAt(s->subsurfacesBelow(), p) })
+            return hit;
+    }
+
+    return nullptr;
+}
+
+static LSurface *PopupAt(LSurface *popup, SkIPoint p) noexcept
+{
+    if (!popup->mapped() || !static_cast<Surface*>(popup)->view.visible())
+        return nullptr;
+
+    const auto &children { popup->popup()->childPopups() };
+
+    for (auto it = children.rbegin(); it != children.rend(); it++)
+        if (LSurface *hit { PopupAt((*it)->surface(), p) })
+            return hit;
+
+    if (LSurface *hit { SubsurfacesAt(popup->subsurfacesAbove(), p) })
+        return hit;
+
+    if (popup->inputRegionContainsGlobalPoint(p))
+        return popup;
+
+    return SubsurfacesAt(popup->subsurfacesBelow(), p);
+}
+
+LSurface *Seat::surfaceAt(SkIPoint point) const noexcept
+{
+    // Top-level popups as stacked in the scene (the latest on top)
+    if (Scene *scene { GetScene() })
+    {
+        const auto &views { scene->popups.children(true) };
+
+        for (auto it = views.rbegin(); it != views.rend(); it++)
+            if (auto *view { dynamic_cast<SurfaceView*>(*it) }; view && view->surface.popup())
+                if (LSurface *hit { PopupAt(&view->surface, point) })
+                    return hit;
+    }
+
+    return LSeat::surfaceAt(point);
 }

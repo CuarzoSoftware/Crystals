@@ -611,6 +611,10 @@ SSD::Hit SSD::HitAt(const SkPoint &pos) noexcept
     const LSurface *surface { seat()->surfaceAt(p) };
     Hit hit;
 
+    // Popups are above everything (see Scene)
+    if (surface && (surface->popup() || surface->isSubchildOf(LSurface::Role::Popup)))
+        return {};
+
     for (auto L = compositor()->layers().rbegin(); L != compositor()->layers().rend(); L++)
         for (auto S = L->rbegin(); S != L->rend(); S++)
             if (!(*S)->parent() && (*S)->roleId() >= LSurface::Role::Toplevel && HitTree(*S, surface, p, hit))

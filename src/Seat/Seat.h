@@ -17,6 +17,9 @@ public:
     void activeToplevelChanged(LToplevelRole *prev) noexcept override;
     void inputDevicePlugged(std::shared_ptr<CZInputDevice> dev) override;
     void inputEvent(const CZInputEvent &e) noexcept override;
+
+    /// Popups first: they're drawn above everything (see Scene).
+    LSurface *surfaceAt(SkIPoint point) const noexcept override;
     CZLogger log;
 };
 

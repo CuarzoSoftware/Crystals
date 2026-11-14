@@ -329,7 +329,10 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
 
     // (Un)fullscreened: its workspace, and the frame of its new size for the animation
     if (changes.has(StateChanged) && isFullscreen() != prev.windowState.has(CZWinFullscreen))
+    {
         FullscreenAnimation::StateApplied(*this);
+        static_cast<Surface*>(surface())->view.syncOpaqueRegion(); // Fully opaque while fullscreen
+    }
 
     Workspaces::Sync(*this);
 

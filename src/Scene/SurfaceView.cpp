@@ -1,4 +1,5 @@
 #include <Scene/SurfaceView.h>
+#include <Core/Crystals.h>
 #include <Scene/Scene.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
@@ -6,6 +7,7 @@
 #include <Effects/TopbarAutoHide.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
+#include <Effects/SurfaceBlurManager.h>
 #include <Louvre/Roles/LPopupRole.h>
 #include <Decorations/SSDTheme.h>
 #include <algorithm>
@@ -75,6 +77,7 @@ void SurfaceView::setBottomRadius(Int32 radius) noexcept
 
     m_bottomRadius = radius;
     syncPieces();
+    syncBlurClip();
     syncOpaqueRegion();
     view.addDamage(AK_IRECT_INF);
 }
@@ -140,6 +143,8 @@ void SurfaceView::syncSize() noexcept
     layout().setWidth(surface.size().width());
     layout().setHeight(surface.size().height());
     syncPieces();
+    syncBlurClip();
+    syncOpaqueRegion(); // Fullscreen: the whole size
 
     // Decorations follow the window size.
     if (surface.toplevel())
@@ -177,6 +182,16 @@ void SurfaceView::syncDamage() noexcept
 
 void SurfaceView::syncOpaqueRegion() noexcept
 {
+    // Fullscreen windows are always fully opaque (whatever the client says): nothing behind them is
+    // drawn, translucent pixels show over black
+    // The desktop too (Desk fills it with an opaque color anyway)
+    if (!surface.parent() && ((surface.toplevel() && surface.toplevel()->isFullscreen()) ||
+                              Crystals::IsDesk(&surface)))
+    {
+        view.opaqueRegion.set(SkRegion(SkIRect::MakeSize(surface.size())));
+        return;
+    }
+
     if (!split())
     {
         view.opaqueRegion.set(surface.opaqueRegion());
@@ -235,16 +250,35 @@ void SurfaceView::syncSrcRect() noexcept
     syncPieces();
 }
 
-void SurfaceView::syncVisibility() noexcept
+bool SurfaceView::shown() const noexcept
 {
     const auto isMinimized { surface.toplevel() && surface.toplevel()->isMinimized() };
 
-    setVisible(
+    return
         surface.mapped() &&
         !surface.cursorRole() &&
         !isMinimized &&
         !MinimizeAnimation::HidesSurface(&surface) && // Unminimizing: the animation shows it
         !TopbarAutoHide::HidesSurface(&surface) &&    // A top bar hidden by a fullscreen window
         !Workspaces::HidesSurface(&surface) &&        // Its workspace is out of view
-        !FullscreenAnimation::HidesSurface(&surface)); // Entering/leaving fullscreen: the animation shows it
+        !FullscreenAnimation::HidesSurface(&surface);  // Entering/leaving fullscreen: the animation shows it
+}
+
+void SurfaceView::syncVisibility() noexcept
+{
+    // Popups aren't drawn inside their window (see Scene): shown only while it is
+    bool visible { shown() };
+
+    if (visible && surface.popup())
+        if (const auto *root { static_cast<const Surface*>(surface.topmostParent()) })
+            visible = root->view.shown();
+
+    setVisible(visible);
+}
+
+void SurfaceView::syncBlurClip() noexcept
+{
+    // Its blur follows the rounded corners too
+    if (auto *blur { static_cast<SurfaceBlurManager*>(surface.backgroundBlur()) })
+        blur->updateClip();
 }

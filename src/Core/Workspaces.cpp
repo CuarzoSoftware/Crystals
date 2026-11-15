@@ -442,6 +442,7 @@ void Workspaces::startSpring(Float64 target, Float64 velocity, Float64 stiffness
     }
 
     m_spring.setStiffness(stiffness);
+    m_spring.setDampingRatio(stiffness == FullscreenStiffness ? FullscreenDamping : SpringDamping); // No bounce for fullscreen
     m_spring.setFrom(m_pos);
     m_spring.setTo(target);
     m_spring.setVelocity(velocity);

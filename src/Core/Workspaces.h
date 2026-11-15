@@ -45,11 +45,13 @@ public:
     static constexpr Float64 SpringStiffness { 15000.0 };
 
     /// Slightly underdamped: it settles much sooner than a critically damped spring (whose last few
-    /// percent creep in), overshooting ~0.15%. FullscreenAnimation follows the same curve.
+    /// percent creep in), overshooting ~0.15%. Not for fullscreen transitions (see FullscreenDamping).
     static constexpr Float64 SpringDamping { 0.9 };
 
-    /// A bit softer when a window enters/leaves fullscreen (FullscreenAnimation follows it, ~0.65 s).
-    static constexpr Float64 FullscreenStiffness { 12500.0 };
+    /// When a window enters/leaves fullscreen (FullscreenAnimation follows it): critically damped, so
+    /// it settles without the slightest bounce at the end (~98% at 0.44 s, settled by ~0.63 s).
+    static constexpr Float64 FullscreenStiffness { 18000.0 };
+    static constexpr Float64 FullscreenDamping { 1.0 };
 
     /// Stiffer spring following the fingers while swiping (smooths fast movements, ~0.1 s lag).
     static constexpr Float64 SwipeFollowStiffness { 90000.0 };
@@ -171,6 +173,9 @@ public:
 
     /// Whether it's sliding (or being swiped).
     bool moving() const noexcept;
+
+    /// Whether it's being swiped (following the fingers).
+    bool swiping() const noexcept { return m_swiping; }
 
     /// Where workspace @p index is drawn now, horizontally relative to the output (0 when shown).
     Int32 slideX(size_t index) const noexcept;

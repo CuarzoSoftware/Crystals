@@ -22,8 +22,12 @@
  *
  * - Entering fullscreen: the window frame stays opaque underneath the whole time, the fullscreen
  *   one fading in over it.
- * - Leaving it: the fullscreen frame fades out slowly over the whole dissolve while the window
- *   frame fades in over it LeavingNewFadeSpeed times faster (the background hardly shows through).
+ * - Leaving it: the window frame fades in over the fullscreen one at a moderate pace
+ *   (LeavingNewFadeSpeed), while the fullscreen frame fades out slowly, from LeavingOldFadeDelay of
+ *   the dissolve to its end (the background hardly shows through).
+ *
+ * The frames follow the world when it moves otherwise (e.g. a swipe to another workspace during
+ * the animation): see slideDeviation().
  *
  * The new frame stays live: it's snapshotted again whenever the window (or a subsurface) commits
  * new content, so e.g. a video keeps playing during the animation. The window itself is hidden
@@ -37,7 +41,8 @@ public:
     static constexpr UInt32 FadeMs { 350 };            // The dissolve when the new frame came too late to follow the movement
     static constexpr Float64 FadeEndProgress { 0.99 }; // The new frame is fully in by then (of the movement)
     static constexpr Float64 MinFadeProgress { 0.2 };  // Less movement left than this when it came: FadeMs instead
-    static constexpr SkScalar LeavingNewFadeSpeed { 1.8f }; // Leaving: the window frame fades in this much faster than the fullscreen one fades out
+    static constexpr SkScalar LeavingNewFadeSpeed { 1.25f }; // Leaving: the window frame fades in at this pace (of the dissolve)
+    static constexpr SkScalar LeavingOldFadeDelay { 0.3f };  // Leaving: the fullscreen frame fades out slowly from there (of the dissolve)
     static constexpr UInt32 TimeoutMs { 1500 };  // The client never drew its new size: ends anyway
 
     /**
@@ -77,6 +82,7 @@ private:
     void bakeNew() noexcept;
     UInt64 treeDamage() const noexcept; // Changes whenever the window or a subsurface commits new content
     SkRect targetRect() const noexcept;
+    SkScalar slideDeviation(SkScalar t) noexcept;
     void place(AKImage &node, const SkRect &window, const SkIRect &margins) noexcept;
 
     CZWeak<ToplevelRole> m_toplevel;
@@ -88,6 +94,9 @@ private:
     Int64 m_newMs { 0 };        // When (animation time)
     Float64 m_newProgress { 0 };// The movement's progress then
     UInt64 m_newDamage { 0 };   // treeDamage() when the new frame was last snapshotted
+    bool m_hasSlideStart { false };
+    bool m_slideDisturbed { false }; // The world moved otherwise (see slideDeviation())
+    SkScalar m_slideStart { 0.f }; // The destination workspace's slideX() at t = 0 (see slideDeviation())
     Int64 m_durationMs { 0 };   // The movement (to within ~0.3%)
     Int32 m_scale { 1 };
     SkRect m_from {};

@@ -21,6 +21,7 @@ int main(void)
 
     setenv("CZ_LOUVRE_WAYLAND_DISPLAY",  "louvre", 0);
     setenv("CZ_LOUVRE_ENABLE_LIBSEAT",   "1", 0);
+    setenv("CZ_SRM_BUFFERING",           "3", 0); // Triple buffering (render the next frame while a page flip is pending)
 
     setenv("CZ_FIRMAMENT_LOG_LEVEL",         "6", 0);
     setenv("CZ_HEAVEN_BAR_LOG_LEVEL",        "6", 0);

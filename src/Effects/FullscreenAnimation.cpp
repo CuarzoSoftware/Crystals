@@ -39,14 +39,17 @@ static SkRect Lerp(const SkRect &a, const SkRect &b, SkScalar t) noexcept
 }
 
 /*
- * The workspace slide's curve (its spring from rest, see Workspaces), w as in CZSpringAnimation.
- * Underdamped from rest (see Workspaces::SpringDamping): x(t) = 1 - e^(-zwt)(cos(wd t) + z/sqrt(1-z^2) sin(wd t))
+ * The workspace slide's curve when a window enters/leaves fullscreen (its spring from rest, see
+ * Workspaces::FullscreenStiffness), w as in CZSpringAnimation. Critically damped (no bounce):
+ * x(t) = 1 - (1 + wt) e^(-wt). Underdamped: x(t) = 1 - e^(-zwt)(cos(wd t) + z/sqrt(1-z^2) sin(wd t)).
  */
 static Float64 SpringW() noexcept { return std::sqrt(Workspaces::FullscreenStiffness * 0.01); }
 
 static Int64 SpringDurationMs() noexcept
 {
-    return Int64(1000.0 * 6.6 / (Workspaces::SpringDamping * SpringW())); // Within ~0.3% (the envelope)
+    // Within ~0.3%: (1 + u)e^-u = 0.003 at u ~ 8.4 (critically damped), the envelope otherwise
+    const Float64 z { Workspaces::FullscreenDamping };
+    return Int64(1000.0 * (z >= 1.0 ? 8.4 : 6.6 / z) / SpringW());
 }
 
 static Float64 SpringProgress(Int64 ms) noexcept
@@ -55,10 +58,14 @@ static Float64 SpringProgress(Int64 ms) noexcept
         return 1.0;
 
     const Float64 w { SpringW() };
-    const Float64 z { Workspaces::SpringDamping };
+    const Float64 z { Workspaces::FullscreenDamping };
+    const Float64 secs { Float64(std::max<Int64>(0, ms)) * 0.001 };
+
+    if (z >= 1.0)
+        return 1.0 - (1.0 + w * secs) * std::exp(-w * secs);
+
     const Float64 root { std::sqrt(1.0 - z * z) };
     const Float64 wd { w * root };
-    const Float64 secs { Float64(std::max<Int64>(0, ms)) * 0.001 };
     return 1.0 - std::exp(-z * w * secs) * (std::cos(wd * secs) + (z / root) * std::sin(wd * secs));
 }
 
@@ -184,8 +191,56 @@ FullscreenAnimation::~FullscreenAnimation()
 
 SkRect FullscreenAnimation::targetRect() const noexcept
 {
-    // Once applied, where it actually is (it may have chosen another size)
-    return m_applied && m_toplevel && !m_entering ? WindowRect(*m_toplevel.get()) : m_target;
+    // Once applied, where it actually is (it may have chosen another size), with its workspace in
+    // view (its position is parked away while it isn't, see Workspaces::ViewOffset())
+    if (!m_applied || !m_toplevel || m_entering)
+        return m_target;
+
+    SkRect r { WindowRect(*m_toplevel.get()) };
+    size_t index;
+
+    if (const Workspaces *ws { Workspaces::Find(m_toplevel->surface(), &index) })
+        r.offset(SkScalar(Workspaces::ViewOffset(m_toplevel->surface()).x() - ws->slideX(index)), 0.f);
+
+    return r;
+}
+
+/*
+ * The animation's rects are where the window is with its workspace in view: the window grows (or
+ * shrinks) in place while its destination workspace (the new fullscreen one, or the desktop it
+ * goes back to) slides in along the same curve, its slideX() going from its start to 0 as t goes
+ * to 1. Any other movement (e.g. a swipe to another workspace meanwhile) deviates from that path:
+ * the frames follow it, ending exactly where the window is drawn.
+ *
+ * Only once it's disturbed (swiped, or another workspace became current): the workspace's own
+ * spring never matches the predicted path exactly (it snaps to rest a bit early, may start a frame
+ * later), and following that tiny difference would make the window bounce at the end.
+ */
+SkScalar FullscreenAnimation::slideDeviation(SkScalar t) noexcept
+{
+    if (!m_toplevel)
+        return 0.f;
+
+    size_t index;
+    const Workspaces *ws { Workspaces::Find(m_toplevel->surface(), &index) };
+
+    // Its destination: where Workspaces::Sync() puts it (right after the animation begins)
+    if (!ws || (m_entering ? ws->toplevel(index) != m_toplevel.get() : !ws->isDesktop(index)))
+        return 0.f;
+
+    const SkScalar slide { SkScalar(ws->slideX(index)) };
+
+    if (!m_hasSlideStart)
+    {
+        // Seen right after it began: back to t = 0
+        m_hasSlideStart = true;
+        m_slideStart = t < 0.5f ? slide / (1.f - t) : 0.f;
+    }
+
+    if (!m_slideDisturbed)
+        m_slideDisturbed = ws->swiping() || ws->current() != index;
+
+    return m_slideDisturbed ? slide - (1.f - t) * m_slideStart : 0.f;
 }
 
 void FullscreenAnimation::update() noexcept
@@ -195,7 +250,7 @@ void FullscreenAnimation::update() noexcept
 
     const Int64 ms { Int64(m_anim.value() * TimeoutMs) };
     const SkScalar t { SkScalar(SpringProgress(ms)) };
-    const SkRect r { Lerp(m_from, targetRect(), t) };
+    const SkRect r { Lerp(m_from, targetRect(), t).makeOffset(slideDeviation(t), 0.f) };
 
     place(m_old, r, m_oldMargins);
     place(m_new, r, m_newMargins);
@@ -218,15 +273,16 @@ void FullscreenAnimation::update() noexcept
     const SkScalar fade { SmoothStep(linear) };
 
     // Entering: the window frame stays opaque under the fullscreen one fading in. Leaving: the
-    // fullscreen frame fades out slowly, the window frame in over it faster (both eased from the
-    // same linear progress, so each starts and ends softly).
+    // window frame fades in over the fullscreen one at a moderate pace, the fullscreen one fades out
+    // slowly from later on (both eased from the same linear progress, so each starts and ends
+    // softly). Where both overlap the background shows by (1 - new) * (1 - old): at most ~3.5%.
     SkScalar newOpacity { fade };
     SkScalar oldOpacity { 1.f };
 
     if (!m_entering && m_hasNew)
     {
         newOpacity = SmoothStep(linear * LeavingNewFadeSpeed);
-        oldOpacity = 1.f - fade;
+        oldOpacity = 1.f - SmoothStep((linear - LeavingOldFadeDelay) / (1.f - LeavingOldFadeDelay));
     }
 
     m_new.setOpacity(newOpacity);

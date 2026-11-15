@@ -23,8 +23,24 @@ public:
      */
     void updateClip() noexcept;
 
+    /**
+     * @brief Applies a client's material (lvr_background_blur v2) to @p fx, or the defaults
+     *        (Apple-like, see AKBackgroundBlurEffect) without one, e.g. with ext_background_effect_v1.
+     */
+    static void ApplyMaterial(AKBackgroundBlurEffect &fx, const std::optional<Material> &material) noexcept;
+
+    /**
+     * @brief The compositor's own fade of the blur (e.g. Exposé hiding the top bar), multiplied by
+     *        the client's (Props::opacity).
+     */
+    void setCompositorOpacity(SkScalar opacity) noexcept;
+
     /// Re-blurred while rendering (see Output::paintGL()): captures of its toplevel are redrawn.
     bool blurred { false };
+
+private:
+    SkScalar m_compositorOpacity { 1.f };
+    void updateOpacity() noexcept { fx.setOpacity(props().opacity * m_compositorOpacity); }
 };
 
 #endif // SURFACEBLURMANAGER_H

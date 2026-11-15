@@ -38,6 +38,37 @@ static SkRect Lerp(const SkRect &a, const SkRect &b, SkScalar t) noexcept
                             a.right() + (b.right() - a.right()) * t, a.bottom() + (b.bottom() - a.bottom()) * t);
 }
 
+/*
+ * The workspace slide's curve (its spring from rest, see Workspaces), w as in CZSpringAnimation.
+ * Underdamped from rest (see Workspaces::SpringDamping): x(t) = 1 - e^(-zwt)(cos(wd t) + z/sqrt(1-z^2) sin(wd t))
+ */
+static Float64 SpringW() noexcept { return std::sqrt(Workspaces::FullscreenStiffness * 0.01); }
+
+static Int64 SpringDurationMs() noexcept
+{
+    return Int64(1000.0 * 6.6 / (Workspaces::SpringDamping * SpringW())); // Within ~0.3% (the envelope)
+}
+
+static Float64 SpringProgress(Int64 ms) noexcept
+{
+    if (ms >= SpringDurationMs())
+        return 1.0;
+
+    const Float64 w { SpringW() };
+    const Float64 z { Workspaces::SpringDamping };
+    const Float64 root { std::sqrt(1.0 - z * z) };
+    const Float64 wd { w * root };
+    const Float64 secs { Float64(std::max<Int64>(0, ms)) * 0.001 };
+    return 1.0 - std::exp(-z * w * secs) * (std::cos(wd * secs) + (z / root) * std::sin(wd * secs));
+}
+
+// Smootherstep: zero velocity and acceleration at both ends (no felt start or stop)
+static SkScalar SmoothStep(SkScalar x) noexcept
+{
+    x = std::clamp(x, 0.f, 1.f);
+    return x * x * x * (x * (x * 6.f - 15.f) + 10.f);
+}
+
 // The window as shown: the content plus the title bar (not while fullscreen).
 static SkRect WindowRect(ToplevelRole &toplevel) noexcept
 {
@@ -78,8 +109,8 @@ void FullscreenAnimation::StateApplied(ToplevelRole &toplevel) noexcept
 void FullscreenAnimation::ProcessPending() noexcept
 {
     for (auto &a : Animations())
-        if (a->m_applied && !a->m_hasNew && !a->m_finished)
-            a->bakeNew();
+        if (a->m_applied && !a->m_finished && (!a->m_hasNew || a->treeDamage() != a->m_newDamage))
+            a->bakeNew(); // First, or new content (live)
 }
 
 bool FullscreenAnimation::HidesSurface(const LSurface *surface) noexcept
@@ -94,6 +125,15 @@ bool FullscreenAnimation::HidesSurface(const LSurface *surface) noexcept
     return false;
 }
 
+bool FullscreenAnimation::WantsFrames(const LSurface *surface) noexcept
+{
+    // Its window: the root of its subsurface tree
+    while (surface && surface->subsurface() && surface->parent())
+        surface = surface->parent();
+
+    return HidesSurface(surface);
+}
+
 FullscreenAnimation::FullscreenAnimation(ToplevelRole &toplevel, bool entering, LOutput *output) noexcept :
     m_toplevel(&toplevel),
     m_surface(toplevel.surface()),
@@ -102,6 +142,7 @@ FullscreenAnimation::FullscreenAnimation(ToplevelRole &toplevel, bool entering, 
 {
     m_scale = std::max(1, Int32(std::ceil(output->scale())));
     m_from = WindowRect(toplevel);
+    m_durationMs = SpringDurationMs();
 
     // Where it goes: the output, or (estimated until the client draws it) where it was before
     if (entering)
@@ -153,41 +194,48 @@ void FullscreenAnimation::update() noexcept
         return;
 
     const Int64 ms { Int64(m_anim.value() * TimeoutMs) };
-    // The workspace slide's curve (its spring from rest, see Workspaces), w as in CZSpringAnimation.
-    // Underdamped from rest (see Workspaces::SpringDamping): x(t) = 1 - e^(-zwt)(cos(wd t) + z/sqrt(1-z^2) sin(wd t))
-    const Float64 w { std::sqrt(Workspaces::FullscreenStiffness * 0.01) };
-    const Float64 z { Workspaces::SpringDamping };
-    const Float64 root { std::sqrt(1.0 - z * z) };
-    const Float64 wd { w * root };
-    const Int64 durationMs { Int64(1000.0 * 6.6 / (z * w)) }; // Within ~0.3% (the envelope)
-    const Float64 secs { Float64(ms) * 0.001 };
-    const Float64 x { ms >= durationMs ? 1.0 :
-                      1.0 - std::exp(-z * w * secs) * (std::cos(wd * secs) + (z / root) * std::sin(wd * secs)) };
-    const SkScalar t { SkScalar(x) };
+    const SkScalar t { SkScalar(SpringProgress(ms)) };
     const SkRect r { Lerp(m_from, targetRect(), t) };
 
     place(m_old, r, m_oldMargins);
     place(m_new, r, m_newMargins);
 
-    // Crossfade: the first frame 1 -> 0, the new one 0 -> 1, over the rest of the movement (at least
-    // FadeMs if it came late)
-    SkScalar fade { 0.f };
+    // Dissolve: the new frame over the first one, following the movement from where it was when the
+    // frame arrived to FadeEndProgress, so it eases out with it (the spring decelerates), plus a
+    // smootherstep for soft ends. Too late to follow it: over FadeMs.
+    SkScalar linear { 0.f }; // The dissolve's progress, before easing
 
     if (m_hasNew)
     {
-        const Int64 span { std::max<Int64>(FadeMs, durationMs - m_newMs) };
-        fade = std::clamp(SkScalar(ms - m_newMs) / SkScalar(span), 0.f, 1.f);
+        const Float64 left { FadeEndProgress - m_newProgress };
+
+        if (left >= MinFadeProgress)
+            linear = std::clamp(SkScalar((Float64(t) - m_newProgress) / left), 0.f, 1.f);
+        else
+            linear = std::clamp(SkScalar(ms - m_newMs) / SkScalar(FadeMs), 0.f, 1.f);
     }
 
-    // Entering fullscreen: the first frame stays opaque under the new one fading in. Leaving it:
-    // crossfaded (the first frame out, the new one in)
-    m_old.setOpacity(m_entering ? 1.f : 1.f - fade);
-    m_new.setOpacity(fade);
+    const SkScalar fade { SmoothStep(linear) };
+
+    // Entering: the window frame stays opaque under the fullscreen one fading in. Leaving: the
+    // fullscreen frame fades out slowly, the window frame in over it faster (both eased from the
+    // same linear progress, so each starts and ends softly).
+    SkScalar newOpacity { fade };
+    SkScalar oldOpacity { 1.f };
+
+    if (!m_entering && m_hasNew)
+    {
+        newOpacity = SmoothStep(linear * LeavingNewFadeSpeed);
+        oldOpacity = 1.f - fade;
+    }
+
+    m_new.setOpacity(newOpacity);
+    m_old.setOpacity(oldOpacity);
 
     // Done once it got there, faded, and its workspace stopped sliding (the window is right there)
     const Workspaces *ws { m_toplevel ? Workspaces::Find(m_toplevel->surface()) : nullptr };
 
-    if (ms >= durationMs && m_hasNew && fade >= 1.f && !(ws && ws->moving()))
+    if (ms >= m_durationMs && m_hasNew && fade >= 1.f && !(ws && ws->moving()))
         finish();
 }
 
@@ -219,21 +267,50 @@ void FullscreenAnimation::finish() noexcept
     compositor()->repaintAllOutputs();
 }
 
+UInt64 FullscreenAnimation::treeDamage() const noexcept
+{
+    // Each surface's damage ID only grows: their sum changes whenever any of them commits damage
+    UInt64 sum { 0 };
+
+    for (Surface *surface : GetSurfaces())
+    {
+        const LSurface *root { surface };
+
+        while (root->subsurface() && root->parent())
+            root = root->parent();
+
+        if (root == m_surface)
+            sum += surface->damageId();
+    }
+
+    return sum;
+}
+
 void FullscreenAnimation::bakeNew() noexcept
 {
-    if (m_hasNew || !m_toplevel)
+    if (!m_toplevel)
         return;
 
+    const UInt64 damage { treeDamage() };
     auto image { Snapshot::Toplevel(*m_toplevel.get(), m_scale, m_newMargins) };
 
     if (!image)
         return;
 
+    m_newDamage = damage;
     m_new.setImage(image);
+
+    // Refreshed (live): same dissolve
+    if (m_hasNew)
+    {
+        compositor()->repaintAllOutputs();
+        return;
+    }
+
     m_new.setOpacity(0.f);
     m_new.setVisible(true);
     m_hasNew = true;
     m_newMs = Int64(m_anim.value() * TimeoutMs);
+    m_newProgress = SpringProgress(m_newMs);
     compositor()->repaintAllOutputs();
 }
-

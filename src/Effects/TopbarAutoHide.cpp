@@ -385,6 +385,8 @@ void TopbarAutoHide::SyncMirrors(LOutput *rendering) noexcept
             {
                 m->blur.setColorScheme(blur->props().colorScheme);
                 m->blur.setRegion(blur->props().region);
+                SurfaceBlurManager::ApplyMaterial(m->blur, blur->props().material);
+                m->blur.setOpacity(blur->props().opacity);
 
                 switch (blur->props().maskType)
                 {

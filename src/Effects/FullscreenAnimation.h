@@ -13,16 +13,31 @@
  *
  * The window is snapshotted as it is, before it's configured. The snapshot then grows from the
  * window's rect to the whole output (or shrinks from the output to where the window lands), along
- * the same curve as its workspace sliding in or out (see Workspaces), so both get there together. Once the client draws its new size (fullscreen
- * or back to a window), that frame is snapshotted too and fades in over the first one. The window
- * itself is hidden meanwhile and shown when it ends.
+ * the same curve as its workspace sliding in or out (see Workspaces), so both get there together.
+ *
+ * Once the client draws its new size (fullscreen or back to a window), that frame is snapshotted
+ * too and dissolves in over the first one, like macOS: both are stretched to the same rect, the new
+ * one fades in over the first (which stays opaque, so the mix never lets the background through)
+ * following the window's movement (so it eases out with it), done by FadeEndProgress of the way:
+ *
+ * - Entering fullscreen: the window frame stays opaque underneath the whole time, the fullscreen
+ *   one fading in over it.
+ * - Leaving it: the fullscreen frame fades out slowly over the whole dissolve while the window
+ *   frame fades in over it LeavingNewFadeSpeed times faster (the background hardly shows through).
+ *
+ * The new frame stays live: it's snapshotted again whenever the window (or a subsurface) commits
+ * new content, so e.g. a video keeps playing during the animation. The window itself is hidden
+ * meanwhile (keeping receiving frame callbacks, see WantsFrames()) and shown when it ends.
  *
  * Snapshots are baked on the main thread (see Snapshot).
  */
 class FullscreenAnimation final : public CZObject
 {
 public:
-    static constexpr UInt32 FadeMs { 140 };      // The new frame fading in
+    static constexpr UInt32 FadeMs { 350 };            // The dissolve when the new frame came too late to follow the movement
+    static constexpr Float64 FadeEndProgress { 0.99 }; // The new frame is fully in by then (of the movement)
+    static constexpr Float64 MinFadeProgress { 0.2 };  // Less movement left than this when it came: FadeMs instead
+    static constexpr SkScalar LeavingNewFadeSpeed { 1.8f }; // Leaving: the window frame fades in this much faster than the fullscreen one fades out
     static constexpr UInt32 TimeoutMs { 1500 };  // The client never drew its new size: ends anyway
 
     /**
@@ -38,10 +53,17 @@ public:
     /// Whether @p surface is hidden by a running animation.
     static bool HidesSurface(const LSurface *surface) noexcept;
 
-    /// Whether frames of @p surface must keep being requested (it's drawn by an animation).
-    static bool WantsFrames(const LSurface *surface) noexcept { return HidesSurface(surface); }
+    /**
+     * @brief Whether frames of @p surface must keep being requested: it's the window of a running
+     *        animation or one of its subsurfaces.
+     *
+     * They're hidden (never rendered), but the client must keep drawing: its new size is awaited,
+     * and many draw their content in subsurfaces, waiting for their frame callbacks.
+     */
+    static bool WantsFrames(const LSurface *surface) noexcept;
 
-    /// Snapshots the new frames of windows whose state was applied (Output::paintGL(), before rendering).
+    /// Snapshots the new frames of windows whose state was applied, and again when they draw new
+    /// content (Output::paintGL(), before rendering).
     static void ProcessPending() noexcept;
 
     static void Clear() noexcept;
@@ -53,6 +75,7 @@ private:
     void update() noexcept;
     void finish() noexcept;
     void bakeNew() noexcept;
+    UInt64 treeDamage() const noexcept; // Changes whenever the window or a subsurface commits new content
     SkRect targetRect() const noexcept;
     void place(AKImage &node, const SkRect &window, const SkIRect &margins) noexcept;
 
@@ -63,6 +86,9 @@ private:
     bool m_applied { false };   // The fullscreen state was applied
     bool m_hasNew { false };    // The new frame was baked
     Int64 m_newMs { 0 };        // When (animation time)
+    Float64 m_newProgress { 0 };// The movement's progress then
+    UInt64 m_newDamage { 0 };   // treeDamage() when the new frame was last snapshotted
+    Int64 m_durationMs { 0 };   // The movement (to within ~0.3%)
     Int32 m_scale { 1 };
     SkRect m_from {};
     SkRect m_target {};         // Estimated until applied

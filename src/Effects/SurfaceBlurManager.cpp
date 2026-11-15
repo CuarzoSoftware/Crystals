@@ -25,6 +25,12 @@ void SurfaceBlurManager::propsChanged(CZBitset<PropChanges> changes, const Props
     if (changes.has(PropChanges::RegionChanged))
         fx.setRegion(props().region);
 
+    if (changes.has(PropChanges::MaterialChanged))
+        ApplyMaterial(fx, props().material);
+
+    if (changes.has(PropChanges::OpacityChanged))
+        updateOpacity();
+
     if (changes.has(PropChanges::MaskChanged))
         updateClip();
 
@@ -35,6 +41,29 @@ void SurfaceBlurManager::propsChanged(CZBitset<PropChanges> changes, const Props
         else
             surface.view.view.removeBackgroundEffect(&fx);
     }
+}
+
+void SurfaceBlurManager::setCompositorOpacity(SkScalar opacity) noexcept
+{
+    m_compositorOpacity = std::clamp(opacity, 0.f, 1.f);
+    updateOpacity();
+}
+
+void SurfaceBlurManager::ApplyMaterial(AKBackgroundBlurEffect &fx, const std::optional<Material> &material) noexcept
+{
+    if (!material)
+    {
+        fx.setBlurRadius(AKBackgroundBlurEffect::DefaultBlurRadius);
+        fx.setMaterial(CZColorScheme::Light, AKBackgroundBlurEffect::DefaultLightMaterial);
+        fx.setMaterial(CZColorScheme::Dark, AKBackgroundBlurEffect::DefaultDarkMaterial);
+        return;
+    }
+
+    // The client picks it for its current color scheme (it sends a new one when that changes)
+    const AKBackgroundBlurEffect::Material m { material->saturation, material->tint };
+    fx.setBlurRadius(material->radius); // Clamped by the effect
+    fx.setMaterial(CZColorScheme::Light, m);
+    fx.setMaterial(CZColorScheme::Dark, m);
 }
 
 static SkRRect ToSkRRect(const CZRRect &r) noexcept

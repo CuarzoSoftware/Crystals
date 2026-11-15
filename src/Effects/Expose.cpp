@@ -109,13 +109,25 @@ Output *Expose::ShownOn() noexcept
     return Active() ? s_expose->m_output : nullptr;
 }
 
+/*
+ * The top bars leave (slide up and fade out) within the first TopbarHideEnd of Exposé's progress,
+ * well before the workspace bar is fully in: otherwise they'd show blurred through it. Closing,
+ * they come back in the last part.
+ */
+static constexpr Float64 TopbarHideEnd { 0.2 };
+
+static Float64 TopbarHideProgress(Float64 progress) noexcept
+{
+    return std::min(1.0, std::clamp(progress, 0.0, 1.0) / TopbarHideEnd);
+}
+
 Int32 Expose::TopbarOffset(const LLayerRole &layerRole) noexcept
 {
     if (!Active() || !TopbarAutoHide::IsTopbar(layerRole) || layerRole.exclusiveOutput() != s_expose->m_output)
         return 0;
 
     const LSurface *s { layerRole.surface() };
-    const Float64 p { std::clamp(s_expose->m_progress, 0.0, 1.0) };
+    const Float64 p { TopbarHideProgress(s_expose->m_progress) };
     return Int32(std::lround(p * (s->size().height() + std::max(0, layerRole.margins().top))));
 }
 
@@ -794,17 +806,19 @@ void Expose::apply() noexcept
 
     placeWindowOutline();
 
-    // Its output's top bars fade out as the workspace bar comes in (their blur too)
+    // Its output's top bars fade out as they slide up (their blur too, see TopbarHideProgress())
+    const SkScalar topbarOpacity { 1.f - SkScalar(TopbarHideProgress(bar)) };
+
     for (Surface *surface : GetSurfaces())
     {
         if (surface->parent() || !surface->layerRole() || !TopbarAutoHide::IsTopbar(*surface->layerRole()) ||
             surface->layerRole()->exclusiveOutput() != m_output)
             continue;
 
-        surface->view.view.setOpacity(1.f - bar);
+        surface->view.view.setOpacity(topbarOpacity);
 
         if (auto *blur { static_cast<SurfaceBlurManager*>(surface->backgroundBlur()) })
-            blur->fx.setOpacity(1.f - bar);
+            blur->setCompositorOpacity(topbarOpacity);
     }
 
     for (auto &screen : m_screens)
@@ -874,7 +888,7 @@ void Expose::deactivate() noexcept
         surface->view.view.setOpacity(1.f);
 
         if (auto *blur { static_cast<SurfaceBlurManager*>(surface->backgroundBlur()) })
-            blur->fx.setOpacity(1.f);
+            blur->setCompositorOpacity(1.f);
     }
 
     // Destroyed on the next opening (this may be an animation step, on a rendering thread)

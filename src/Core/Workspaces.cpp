@@ -1,4 +1,5 @@
 #include <Core/Workspaces.h>
+#include <Core/CZTimer.h>
 #include <Core/Crystals.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
@@ -20,6 +21,10 @@
 static constexpr Int32 ParkX { 1 << 21 };
 
 static LOutput *s_renderingOutput { nullptr };
+
+// Desktop ids are unique across outputs: a window dragged to another output never lands on a
+// desktop there just because it has the same id (see Find())
+static UInt32 s_nextDesktopId { 1 };
 static Workspaces *s_swiping { nullptr };
 
 static Workspaces *Existing(const LOutput *output) noexcept
@@ -232,7 +237,7 @@ Workspaces::Space &Workspaces::insert(size_t index, ToplevelRole *toplevel) noex
     else
     {
         // A desktop: the desktop's snapshot, where it isn't drawn (see onPosChanged())
-        space->desktopId = m_nextDesktopId++;
+        space->desktopId = s_nextDesktopId++;
         auto image { std::make_unique<AKImage>(&GetScene()->backdrops) };
         space->deskImage = image.get();
         image->enableAutoDamage(true);
@@ -574,6 +579,251 @@ void Workspaces::Sync(ToplevelRole &toplevel) noexcept
     }
 }
 
+Workspaces::Evacuation Workspaces::Evacuate(LOutput *output) noexcept
+{
+    Evacuation ev;
+
+    if (!output)
+        return ev;
+
+    // The closest output (the gap between them: 0 if they touch)
+    const SkIRect gone { output->rect() };
+    Int64 best { INT64_MAX };
+
+    for (LOutput *o : compositor()->outputs())
+    {
+        if (o == output)
+            continue;
+
+        const SkIRect r { o->rect() };
+        const Int64 dx { std::max<Int64>({ 0, Int64(r.left()) - gone.right(), Int64(gone.left()) - r.right() }) };
+        const Int64 dy { std::max<Int64>({ 0, Int64(r.top()) - gone.bottom(), Int64(gone.top()) - r.bottom() }) };
+
+        if (dx * dx + dy * dy < best)
+        {
+            best = dx * dx + dy * dy;
+            ev.target = o;
+        }
+    }
+
+    // Its windows (any workspace, fullscreen ones too), where they are in it
+    for (Surface *surface : GetSurfaces())
+    {
+        auto *toplevel { static_cast<ToplevelRole*>(surface->toplevel()) };
+
+        if (!toplevel || surface->parent())
+            continue;
+
+        Workspaces *ws { Find(surface) };
+
+        if (!(ws && &ws->m_output == output) && toplevel->exclusiveOutput() != output)
+            continue;
+
+        // Its floating size (fullscreen/maximized: the one it goes back to)
+        const bool fullscreen { toplevel->pendingConfiguration().windowState.has(CZWinFullscreen) };
+        const SkISize size { fullscreen ? toplevel->prevRect.size() : toplevel->windowGeometry().size() };
+        const SkPoint room { SkScalar(std::max(1, gone.width() - size.width())), SkScalar(std::max(1, gone.height() - size.height())) };
+        const SkIPoint pos { fullscreen ? toplevel->prevRect.topLeft() : surface->pos() };
+
+        ev.windows.push_back({
+            CZWeak<ToplevelRole>(toplevel),
+            SkPoint::Make(std::clamp((pos.x() - gone.x()) / room.x(), 0.f, 1.f), std::clamp((pos.y() - gone.y()) / room.y(), 0.f, 1.f)),
+            surface->pos() });
+    }
+
+    // Its workspaces go away with it (none refers to its windows anymore)
+    if (Workspaces *ws { Existing(output) })
+    {
+        if (s_swiping == ws)
+            s_swiping = nullptr;
+
+        static_cast<Output*>(output)->workspaces.reset();
+    }
+
+    return ev;
+}
+
+void Workspaces::Place(const Evacuation &ev) noexcept
+{
+    // Still there (outputs may go away in a row)
+    LOutput *target { ev.target };
+
+    if (!target || std::find(compositor()->outputs().begin(), compositor()->outputs().end(), target) == compositor()->outputs().end())
+        target = compositor()->outputs().empty() ? nullptr : compositor()->outputs().front();
+
+    if (!target)
+        return;
+
+    Workspaces *ws { Of(target) };
+    const UInt32 desktop { ws->defaultDesktop() };
+    const SkIRect avail { SkIRect::MakePtSize(target->pos() + target->availableGeometry().topLeft(), target->availableGeometry().size()) };
+
+    for (const auto &w : ev.windows)
+    {
+        ToplevelRole *toplevel { w.toplevel.get() };
+
+        if (!toplevel || !toplevel->surface())
+            continue;
+
+        LSurface *surface { toplevel->surface() };
+        toplevel->desktopId = desktop;
+
+        const bool fullscreen { toplevel->pendingConfiguration().windowState.has(CZWinFullscreen) };
+        const bool maximized { toplevel->pendingConfiguration().windowState.has(CZWinMaximized) };
+        const Int32 titlebar { toplevel->pendingTitlebarHeight() };
+
+        // Its floating size, shrunk to fit the available area (title bar included)
+        SkISize size { fullscreen ? toplevel->prevRect.size() : toplevel->windowGeometry().size() };
+
+        if (size.isEmpty())
+            size = SkISize::Make(avail.width() / 2, avail.height() / 2);
+
+        const SkISize fit { std::min(size.width(), avail.width()), std::max(1, std::min(size.height(), avail.height() - titlebar)) };
+
+        // Where it was, inside the available area (its title bar reachable)
+        const SkIPoint pos {
+            avail.x() + Int32(std::lround(w.rel.x() * std::max(0, avail.width() - fit.width()))),
+            avail.y() + Int32(std::lround(w.rel.y() * std::max(0, avail.height() - fit.height() - titlebar))) };
+
+        if (fullscreen)
+        {
+            // Back to where it goes (Louvre restores prevRect), maximized if it was
+            toplevel->prevRect = SkIRect::MakePtSize(maximized ? avail.topLeft() : pos, fit);
+            toplevel->setExclusiveOutput(target);
+            toplevel->leaveFullscreen(false);
+        }
+        else if (maximized)
+        {
+            toplevel->setExclusiveOutput(target);
+            surface->setPos(avail.topLeft());
+            toplevel->configureMaximizedSize();
+        }
+        else
+        {
+            if (fit != size)
+                toplevel->configureSize(fit);
+
+            surface->setPos(pos);
+        }
+
+        // Its child windows (dialogs) with it
+        const SkIPoint delta { surface->pos() - w.pos };
+
+        for (Surface *child : GetSurfaces())
+            if (child != surface && child->toplevel() && child->parent() && child->topmostParent() == surface)
+                child->setPos(child->pos() + delta);
+
+        Sync(*toplevel);
+    }
+
+    Expose::WindowsChanged();
+    TopbarAutoHide::UpdateAll();
+    compositor()->repaintAllOutputs();
+}
+
+std::vector<Workspaces::Placement> Workspaces::Placements() noexcept
+{
+    std::vector<Placement> placements;
+
+    for (Surface *surface : GetSurfaces())
+    {
+        auto *toplevel { static_cast<ToplevelRole*>(surface->toplevel()) };
+
+        if (!toplevel)
+            continue;
+
+        Workspaces *ws { Find(surface) };
+        LOutput *output { ws ? static_cast<LOutput*>(&ws->m_output) : toplevel->exclusiveOutput() };
+
+        if (output)
+            placements.push_back({ CZWeak<ToplevelRole>(toplevel), output, surface->pos() - output->pos() });
+    }
+
+    return placements;
+}
+
+void Workspaces::FollowOutputs(const std::vector<Placement> &placements) noexcept
+{
+    const auto &outputs { compositor()->outputs() };
+
+    for (const auto &p : placements)
+    {
+        ToplevelRole *toplevel { p.toplevel.get() };
+
+        // Its output is gone (evacuated, see Evacuate())
+        if (!toplevel || !toplevel->surface() || std::find(outputs.begin(), outputs.end(), p.output) == outputs.end())
+            continue;
+
+        toplevel->surface()->setPos(p.output->pos() + p.offset);
+
+        // Dialogs keep their place relative to their parent (moved with it above)
+        if (!toplevel->surface()->parent())
+            toplevel->keepReachable(p.output);
+    }
+
+    Expose::WindowsChanged();
+    TopbarAutoHide::UpdateAll();
+    compositor()->repaintAllOutputs();
+}
+
+void Workspaces::EnsureReachable() noexcept
+{
+    const auto &outputs { compositor()->outputs() };
+
+    if (outputs.empty())
+        return;
+
+    for (Surface *surface : GetSurfaces())
+    {
+        auto *toplevel { static_cast<ToplevelRole*>(surface->toplevel()) };
+
+        if (!toplevel || !surface->mapped())
+            continue;
+
+        // Its workspace's output, unless it's off every output: the closest one then
+        const SkIRect rect { SkIRect::MakePtSize(surface->pos(), toplevel->windowGeometry().size()) };
+        Workspaces *ws { Find(surface) };
+        LOutput *output { ws ? static_cast<LOutput*>(&ws->m_output) : nullptr };
+
+        if (!output || !SkIRect::Intersects(output->rect(), rect))
+        {
+            const SkIPoint c { rect.x() + rect.width() / 2, rect.y() + rect.height() / 2 };
+            Int64 best { INT64_MAX };
+
+            for (LOutput *o : outputs)
+            {
+                const SkIRect r { o->rect() };
+                const Int64 dx { std::max<Int64>({ 0, Int64(r.left()) - c.x(), Int64(c.x()) - r.right() }) };
+                const Int64 dy { std::max<Int64>({ 0, Int64(r.top()) - c.y(), Int64(c.y()) - r.bottom() }) };
+
+                if (dx * dx + dy * dy < best)
+                {
+                    best = dx * dx + dy * dy;
+                    output = o;
+                }
+            }
+        }
+
+        toplevel->keepReachable(output);
+    }
+}
+
+void Workspaces::ScheduleReachable() noexcept
+{
+    // Soon (the panels resized), and later (slow clients resized). Never destroyed: they'd outlive
+    // CZCore as statics
+    static CZTimer *soon { nullptr }, *later { nullptr };
+
+    if (!soon)
+    {
+        soon = new CZTimer([](CZTimer*){ EnsureReachable(); });
+        later = new CZTimer([](CZTimer*){ EnsureReachable(); });
+    }
+
+    soon->start(300);
+    later->start(1200);
+}
+
 size_t Workspaces::desktopIndex(UInt32 id) const noexcept
 {
     if (id == 0)
@@ -591,9 +841,7 @@ UInt32 Workspaces::defaultDesktop() const noexcept
     if (isDesktop(m_current))
         return m_spaces[m_current]->desktopId;
 
-    if (desktopIndex(m_lastDesktopId) != SIZE_MAX)
-        return m_lastDesktopId;
-
+    // A fullscreen window's: the first desktop (not shown meanwhile)
     return m_spaces.empty() ? 0 : m_spaces[0]->desktopId;
 }
 

@@ -16,7 +16,8 @@
  * @brief The workspaces of an output (like macOS Spaces).
  *
  * Desktop workspaces hold the windows that aren't fullscreen (each window belongs to one, see
- * ToplevelRole::desktopId: new ones go to the current desktop, or the last one shown), and show
+ * ToplevelRole::desktopId: new ones, and those dragged here from another output, go to the current
+ * desktop, or the first one while a fullscreen window's is shown), and show
  * the desktop (Desk: on the current desktop, or the last one shown; the others show a snapshot of
  * it while in view). The first desktop is always workspace 0 (it can't be moved or removed);
  * others are added (addDesktop()) and removed (their windows go to the first one). Each fullscreen
@@ -120,6 +121,66 @@ public:
 
     static void Clear() noexcept;
 
+    /**
+     * @brief The windows of an output going away, and the output they go to (see Evacuate()).
+     */
+    struct Evacuation
+    {
+        LOutput *target { nullptr }; ///< The closest output
+        struct Window
+        {
+            CZWeak<ToplevelRole> toplevel;
+            SkPoint rel;            ///< Where it was in the output (fraction of the room around it)
+            SkIPoint pos;           ///< Its position then (its child windows move with it)
+        };
+        std::vector<Window> windows;
+    };
+
+    /**
+     * @brief @p output is going away: finds its windows (all its workspaces', by where they are,
+     *        so before Louvre removes it) and the closest output, and drops its workspaces.
+     *
+     * Then, once it's removed (and the outputs rearranged), Place() puts them on that output.
+     */
+    static Evacuation Evacuate(LOutput *output) noexcept;
+
+    /**
+     * @brief Puts evacuated windows on the current desktop of their output (see defaultDesktop()),
+     *        floating (no longer fullscreen), where they were in the output, inside its available area
+     *        (shrunk to fit if needed): all visible and draggable.
+     */
+    static void Place(const Evacuation &evacuation) noexcept;
+
+    /// Where a window is relative to its output (see Placements()).
+    struct Placement
+    {
+        CZWeak<ToplevelRole> toplevel;
+        LOutput *output { nullptr };
+        SkIPoint offset; ///< Its position minus the output's
+    };
+
+    /// Every window's output (its workspace's) and where it is on it: taken before the outputs are
+    /// rearranged (e.g. by an output configuration client), see FollowOutputs().
+    static std::vector<Placement> Placements() noexcept;
+
+    /**
+     * @brief Once the outputs were rearranged (moved, rotated, resized): each window moves with its
+     *        output, and stays inside it (see ToplevelRole::keepReachable()).
+     */
+    static void FollowOutputs(const std::vector<Placement> &placements) noexcept;
+
+    /**
+     * @brief Makes every window reachable: inside the available area of its output (its workspace's,
+     *        or the closest one if it's off every output). See ToplevelRole::keepReachable().
+     *
+     * Run again shortly after the outputs change (see ScheduleReachable()): the panels update the
+     * available areas only once they've resized for the new outputs, and clients resize themselves.
+     */
+    static void EnsureReachable() noexcept;
+
+    /// Runs EnsureReachable() soon (and once more later), after the outputs settle.
+    static void ScheduleReachable() noexcept;
+
     /* -------------------------------- Per output -------------------------------- */
 
     Output &output() const noexcept { return m_output; }
@@ -198,13 +259,13 @@ private:
     /// Index of the desktop @p id (SIZE_MAX if none).
     size_t desktopIndex(UInt32 id) const noexcept;
 
-    /// The desktop new windows go to: the current one, or the last one shown.
+    /// The desktop windows go to when they get here (new, dragged from another output...): the
+    /// current one, or the first one if a fullscreen window's is shown (they aren't shown then).
     UInt32 defaultDesktop() const noexcept;
 
     /// Takes a snapshot of the desktop (Desk) for the desktops it isn't drawn on.
     void updateDeskImage() noexcept;
 
-    UInt32 m_nextDesktopId { 1 };
     UInt32 m_lastDesktopId { 0 }; // The last desktop shown
     void close(size_t index, Int64 switchTo, Float64 stiffness = SpringStiffness) noexcept;
     void removeClosed() noexcept;

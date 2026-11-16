@@ -11,6 +11,8 @@
 #include <Ream/RPainter.h>
 #include <Effects/SurfaceBlurManager.h>
 #include <CZ/skia/core/SkCanvas.h>
+#include <Louvre/Roles/LSubsurfaceRole.h>
+#include <vector>
 
 namespace
 {
@@ -30,6 +32,89 @@ namespace
     };
 
     std::unique_ptr<BakeScene> s_bake;
+
+    // A subsurface's view as it was before being shown in the snapshot (see View())
+    struct SubsurfaceState
+    {
+        Surface *surface;
+        bool visible, popups, toplevels, blur;
+    };
+
+    // Its mapped subsurfaces (and theirs) are shown: they may be hidden with their window (e.g.
+    // Expose::HidesSurface() hides the whole tree), only the root view is shown by View()
+    void ShowSubsurfaces(Surface &surface, std::vector<SubsurfaceState> &states) noexcept
+    {
+        for (const auto *list : { &surface.subsurfacesBelow(), &surface.subsurfacesAbove() })
+        {
+            for (LSubsurfaceRole *role : *list)
+            {
+                auto *sub { static_cast<Surface*>(role->surface()) };
+
+                if (!sub || !sub->mapped())
+                    continue;
+
+                auto *blur { static_cast<SurfaceBlurManager*>(sub->backgroundBlur()) };
+                SurfaceView &v { sub->view };
+                states.push_back({ sub, v.visible(), v.popups.visible(), v.toplevels.visible(), blur && blur->fx.visible() });
+
+                // Neither its popups or child windows (placed in global coordinates), nor its blur
+                v.popups.setVisible(false);
+                v.toplevels.setVisible(false);
+                v.setVisible(true);
+
+                if (blur)
+                    blur->fx.setVisible(false);
+
+                ShowSubsurfaces(*sub, states);
+            }
+        }
+    }
+
+    void RestoreSubsurfaces(const std::vector<SubsurfaceState> &states) noexcept
+    {
+        for (const auto &st : states)
+        {
+            SurfaceView &v { st.surface->view };
+            v.popups.setVisible(st.popups);
+            v.toplevels.setVisible(st.toplevels);
+            v.setVisible(st.visible);
+
+            if (auto *blur { static_cast<SurfaceBlurManager*>(st.surface->backgroundBlur()) })
+                blur->fx.setVisible(st.blur);
+        }
+    }
+
+    // Clips the subsurfaces of @p surface to @p clip (surface coordinates): their containers get its
+    // rect (clipping their children), the direct subsurfaces are moved to stay where they were
+    void ClipSubsurfaces(Surface &surface, const SkIRect *clip) noexcept
+    {
+        SurfaceView &view { surface.view };
+
+        for (AKContainer *c : { &view.below, &view.above })
+        {
+            c->enableChildrenClipping(clip);
+            c->layout().setPosition(YGEdgeLeft, clip ? clip->x() : YGUndefined);
+            c->layout().setPosition(YGEdgeTop, clip ? clip->y() : YGUndefined);
+            c->layout().setWidth(clip ? clip->width() : YGUndefined);
+            c->layout().setHeight(clip ? clip->height() : YGUndefined);
+        }
+
+        const SkIPoint offset { clip ? SkIPoint::Make(clip->x(), clip->y()) : SkIPoint::Make(0, 0) };
+
+        for (const auto *list : { &surface.subsurfacesBelow(), &surface.subsurfacesAbove() })
+        {
+            for (LSubsurfaceRole *role : *list)
+            {
+                auto *sub { static_cast<Surface*>(role->surface()) };
+
+                if (!sub)
+                    continue;
+
+                sub->view.layout().setPosition(YGEdgeLeft, role->localPos().x() - offset.x());
+                sub->view.layout().setPosition(YGEdgeTop, role->localPos().y() - offset.y());
+            }
+        }
+    }
 }
 
 void Snapshot::Clear() noexcept
@@ -37,7 +122,8 @@ void Snapshot::Clear() noexcept
     s_bake.reset();
 }
 
-std::shared_ptr<RImage> Snapshot::View(Surface &surface, SkISize size, SkIPoint viewPos, Int32 scale) noexcept
+std::shared_ptr<RImage> Snapshot::View(Surface &surface, SkISize size, SkIPoint viewPos, Int32 scale,
+                                       const SkIRect *subsurfaceClip) noexcept
 {
     if (size.isEmpty() || surface.size().isEmpty() || !surface.image())
         return nullptr;
@@ -96,6 +182,14 @@ std::shared_ptr<RImage> Snapshot::View(Surface &surface, SkISize size, SkIPoint 
     view.popups.setVisible(false);
     view.toplevels.setVisible(false);
     view.setVisible(true);
+
+    // With its subsurfaces, clipped if asked
+    std::vector<SubsurfaceState> subsurfaces;
+    ShowSubsurfaces(surface, subsurfaces);
+
+    if (subsurfaceClip)
+        ClipSubsurfaces(surface, subsurfaceClip);
+
     view.setParent(&aux.root);
     view.layout().setPosition(YGEdgeLeft, viewPos.x());
     view.layout().setPosition(YGEdgeTop, viewPos.y());
@@ -120,6 +214,11 @@ std::shared_ptr<RImage> Snapshot::View(Surface &surface, SkISize size, SkIPoint 
         view.insertBefore(next);
     else
         view.setParent(parent);
+
+    if (subsurfaceClip)
+        ClipSubsurfaces(surface, nullptr);
+
+    RestoreSubsurfaces(subsurfaces);
 
     view.popups.setVisible(popupsVisible);
     view.toplevels.setVisible(toplevelsVisible);
@@ -174,5 +273,10 @@ std::shared_ptr<RImage> Snapshot::Toplevel(ToplevelRole &toplevel, Int32 scale, 
     const SkISize size { surface->size().width() + margins.left() + margins.right(),
                          surface->size().height() + titlebar + margins.top() + margins.bottom() };
 
-    return View(*surface, size, SkIPoint::Make(margins.left(), titlebar + margins.top()), scale);
+    // Its subsurfaces clipped to the window: its content (server-side decorations) or its geometry
+    // (the client's decorations, without their shadows)
+    const SkIRect &geo { toplevel.windowGeometry() };
+    const SkIRect clip { (titlebar > 0 || geo.isEmpty()) ? SkIRect::MakeSize(surface->size()) : geo };
+
+    return View(*surface, size, SkIPoint::Make(margins.left(), titlebar + margins.top()), scale, &clip);
 }

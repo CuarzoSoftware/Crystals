@@ -34,7 +34,7 @@ void SubsurfaceRole::placedBelow(LSurface *sibling) noexcept
 
     // Sibling is the parent => insert it at the end of parent->view.below
     if (sibl == surf->parent())
-        surf->view.setParent(&sibl->view.above);
+        surf->view.setParent(&sibl->view.below);
     else
         surf->view.insertAfter(&sibl->view);
 }

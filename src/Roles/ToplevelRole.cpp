@@ -1,3 +1,4 @@
+#include <Core/SessionLock.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 #include <Effects/MinimizeAnimation.h>
@@ -165,10 +166,80 @@ void ToplevelRole::unsetFullscreenRequest()
     leaveFullscreen(true);
 }
 
+void ToplevelRole::keepReachable(LOutput *output) noexcept
+{
+    LSurface *surf { surface() };
+
+    if (!surf || !output || moveSession().isActive() || resizeSession().isActive())
+        return;
+
+    const auto &state { pendingConfiguration().windowState };
+    const SkIRect avail { SkIRect::MakePtSize(output->pos() + output->availableGeometry().topLeft(), output->availableGeometry().size()) };
+
+    if (state.has(CZWinFullscreen))
+    {
+        setExclusiveOutput(output);
+        surf->setPos(output->pos());
+        configureSize(output->size());
+        return;
+    }
+
+    if (state.has(CZWinMaximized))
+    {
+        setExclusiveOutput(output);
+        surf->setPos(avail.topLeft());
+        configureMaximizedSize();
+        return;
+    }
+
+    const SkISize size { windowGeometry().size() };
+
+    if (size.isEmpty() || avail.isEmpty())
+        return;
+
+    // The whole window (title bar included) inside the available area, shrunk if needed
+    const Int32 titlebar { pendingTitlebarHeight() };
+    const SkISize fit { std::min(size.width(), avail.width()), std::max(1, std::min(size.height(), avail.height() - titlebar)) };
+
+    if (fit != size)
+        configureSize(fit);
+
+    const SkIPoint pos {
+        std::clamp(surf->pos().x(), avail.x(), std::max(avail.x(), avail.right() - fit.width())),
+        std::clamp(surf->pos().y(), avail.y(), std::max(avail.y(), avail.bottom() - fit.height() - titlebar)) };
+
+    if (pos != surf->pos())
+        surf->setPos(pos);
+}
+
 void ToplevelRole::leaveFullscreen(bool animated) noexcept
 {
     if (!pendingConfiguration().windowState.has(CZWinFullscreen))
         return;
+
+    // Where it goes back to (prevRect, see LToplevelRole): inside the available area, title bar
+    // included. E.g. an app that started fullscreen has none (or the whole area, which the title
+    // bar would push past the bottom).
+    if (LOutput *output { exclusiveOutput() ? exclusiveOutput() : cursor()->output() })
+    {
+        const SkIRect avail { SkIRect::MakePtSize(output->pos() + output->availableGeometry().topLeft(), output->availableGeometry().size()) };
+        const Int32 titlebar { pendingConfiguration().decorationMode == ServerSide ? SSDTheme::TitlebarHeight : 0 };
+        SkISize size { prevRect.size() };
+
+        if (size.isEmpty())
+            size = SkISize::Make(avail.width() * 2 / 3, avail.height() * 2 / 3);
+
+        size = SkISize::Make(std::min(size.width(), avail.width()), std::max(1, std::min(size.height(), avail.height() - titlebar)));
+        SkIPoint pos { prevRect.topLeft() };
+
+        // Unknown (or not on this output): centered
+        if (prevRect.isEmpty() || !SkIRect::Intersects(prevRect, avail))
+            pos = SkIPoint::Make(avail.x() + (avail.width() - size.width()) / 2, avail.y() + (avail.height() - size.height() - titlebar) / 2);
+
+        pos.fX = std::clamp(pos.x(), avail.x(), std::max(avail.x(), avail.right() - size.width()));
+        pos.fY = std::clamp(pos.y(), avail.y(), std::max(avail.y(), avail.bottom() - size.height() - titlebar));
+        prevRect = SkIRect::MakePtSize(pos, size);
+    }
 
     if (animated)
         FullscreenAnimation::Begin(*this, false, exclusiveOutput() ? exclusiveOutput() : cursor()->output());
@@ -342,6 +413,11 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
         FullscreenAnimation::StateApplied(*this);
         Expose::WindowsChanged(); // Into/out of the desktop's layout
         static_cast<Surface*>(surface())->view.syncOpaqueRegion(); // Fully opaque while fullscreen
+
+        // Out of fullscreen: reachable, even if the client kept another size (see leaveFullscreen())
+        if (!isFullscreen())
+            if (LOutput *output { exclusiveOutput() ? exclusiveOutput() : cursor()->output() })
+                keepReachable(output);
     }
 
     Workspaces::Sync(*this);
@@ -375,7 +451,7 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
     {
         auto *keyboard { seat()->keyboard() };
 
-        if (!keyboard->grab() && !surface()->hasKeyboardFocus())
+        if (!keyboard->grab() && !surface()->hasKeyboardFocus() && !SessionLockManager::IsLocked())
             keyboard->setFocus(surface());
     }
 }

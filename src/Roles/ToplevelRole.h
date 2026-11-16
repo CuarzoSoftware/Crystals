@@ -65,12 +65,21 @@ public:
     /// Dock thumbnails (see CaptureManager): a small version of the window, title bar included.
     void imageCaptureFrameRequest(LImageCaptureFrame *frame) override;
 
+    /// Sends the maximized size (the available area minus the title bar) if maximizing/maximized.
+    void configureMaximizedSize() noexcept;
+
+    /**
+     * @brief Keeps it inside @p output's available area (e.g. the output was rotated, a panel
+     *        appeared): fullscreen ones get the output's size, maximized ones its available area,
+     *        and floating ones are shrunk if they don't fit and moved in, title bar included, so
+     *        they're always reachable. Not while being moved or resized.
+     */
+    void keepReachable(LOutput *output) noexcept;
+
 private:
     DecorationMode wantedDecorationMode() const noexcept;
     bool fullscreenLocked() const noexcept { return pendingConfiguration().windowState.has(CZWinFullscreen); }
 
-    /// Sends the maximized size (the available area minus the title bar) if maximizing/maximized.
-    void configureMaximizedSize() noexcept;
     void configureAvailableBounds() noexcept;
 
     /**

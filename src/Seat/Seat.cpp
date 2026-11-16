@@ -1,3 +1,10 @@
+#include <algorithm>
+#include <Louvre/LCompositor.h>
+#include <Louvre/Cursor/LCursor.h>
+#include <Seat/Output.h>
+#include <Effects/Expose.h>
+#include <Core/Workspaces.h>
+#include <Core/SessionLock.h>
 #include <Louvre/Roles/LSubsurfaceRole.h>
 #include <Louvre/Roles/LPopupRole.h>
 #include <Louvre/Roles/LBackgroundBlur.h>
@@ -78,6 +85,61 @@ void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
     configureLibinputDevice(dev->nativeHandle.libinput);
 }
 
+void Seat::outputUnplugged(LOutput *output)
+{
+    // Exposé shown there: gone with it
+    if (Expose::ShownOn() && static_cast<LOutput*>(Expose::ShownOn()) == output)
+        Expose::Clear();
+
+    // Found while it's there, placed once it's removed and the others rearranged (their windows
+    // move with them)
+    const auto placements { Workspaces::Placements() };
+    const auto evacuation { Workspaces::Evacuate(output) };
+    Output::Configuring = true;
+    LSeat::outputUnplugged(output);
+    Output::Configuring = false;
+    Output::SyncLastRects();
+    cursor()->setPos(cursor()->pos());
+    Workspaces::FollowOutputs(placements);
+    Workspaces::Place(evacuation);
+    Workspaces::ScheduleReachable();
+}
+
+bool Seat::configureOutputsRequest(LClient *client, const std::vector<OutputConfiguration> &configurations)
+{
+    // Where every window is (before anything moves), and the windows of outputs being disabled
+    const auto placements { Workspaces::Placements() };
+    std::vector<Workspaces::Evacuation> evacuations;
+    const auto &outputs { compositor()->outputs() };
+
+    for (const auto &conf : configurations)
+    {
+        if (conf.initialized || std::find(outputs.begin(), outputs.end(), &conf.output) == outputs.end())
+            continue;
+
+        if (Expose::ShownOn() && static_cast<LOutput*>(Expose::ShownOn()) == &conf.output)
+            Expose::Clear();
+
+        evacuations.push_back(Workspaces::Evacuate(&conf.output));
+    }
+
+    Output::Configuring = true;
+    const bool ok { LSeat::configureOutputsRequest(client, configurations) };
+    Output::Configuring = false;
+
+    // Where the client put them (not rearranged afterwards, see Output::resizeGL())
+    Output::SyncLastRects();
+    cursor()->setPos(cursor()->pos());
+
+    Workspaces::FollowOutputs(placements);
+
+    for (const auto &evacuation : evacuations)
+        Workspaces::Place(evacuation);
+
+    Workspaces::ScheduleReachable();
+    return ok;
+}
+
 void Seat::inputEvent(const CZInputEvent &e) noexcept
 {
     LSeat::inputEvent(e);
@@ -128,6 +190,10 @@ static LSurface *PopupAt(LSurface *popup, SkIPoint p) noexcept
 
 LSurface *Seat::surfaceAt(SkIPoint point) const noexcept
 {
+    // Locked: nothing but the lock surfaces
+    if (SessionLockManager::IsLocked())
+        return SessionLockManager::SurfaceAt(point);
+
     // Top-level popups as stacked in the scene (the latest on top)
     if (Scene *scene { GetScene() })
     {

@@ -1,3 +1,4 @@
+#include <Roles/ToplevelRole.h>
 #include "LBaseSurfaceRole.h"
 #include <Core/CZCore.h>
 #include <Louvre/Cursor/LCursor.h>
@@ -14,6 +15,7 @@
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
 #include <Effects/TopbarAutoHide.h>
+#include <Core/SessionLock.h>
 #include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
 
@@ -35,6 +37,7 @@ void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
     initLayers();
+    m_lastRect = rect();
 }
 
 void Output::paintGL()
@@ -67,6 +70,14 @@ void Output::paintGL()
     auto target { res->target };
     target->surface = surface;
     target->age = imageAge();
+
+    // Transformed (rotated, flipped): the previous frames' content (and their damage) is laid out
+    // differently, the whole screen is repainted
+    if (transform() != m_lastTransform)
+    {
+        m_lastTransform = transform();
+        target->age = 0;
+    }
     target->setBakedNodesScale(scale());
     target->outDamage = &damage;
 
@@ -92,12 +103,81 @@ void Output::moveGL()
 {
     updateLayers();
     repaint();
+    m_lastRect = rect();
+    Workspaces::ScheduleReachable();
 }
 
 void Output::resizeGL()
 {
+    Workspaces::ScheduleReachable();
+
+    // Resized (e.g. rotated, another mode): the outputs right of / below it keep touching it, so
+    // none overlaps it (input would go to the wrong one) or leaves a gap (the cursor couldn't cross)
+    const SkIRect prev { m_lastRect };
+    const SkIRect now { rect() };
+    m_lastRect = now;
+
+    if (!Configuring && !prev.isEmpty() && prev.topLeft() == now.topLeft() && prev.size() != now.size())
+    {
+        // Their windows move with them
+        const auto placements { Workspaces::Placements() };
+
+        const Int32 dw { now.width() - prev.width() };
+        const Int32 dh { now.height() - prev.height() };
+
+        for (LOutput *o : compositor()->outputs())
+        {
+            if (o == this)
+                continue;
+
+            SkIPoint pos { o->pos() };
+
+            if (pos.x() >= prev.right())
+                pos.fX += dw;
+            else if (pos.y() >= prev.bottom())
+                pos.fY += dh;
+
+            if (pos != o->pos())
+                o->setPos(pos);
+        }
+
+        // Back inside an output if it's not anymore
+        cursor()->setPos(cursor()->pos());
+        Workspaces::FollowOutputs(placements);
+    }
+
     updateLayers();
     repaint();
+}
+
+void Output::SyncLastRects() noexcept
+{
+    for (LOutput *o : compositor()->outputs())
+        static_cast<Output*>(o)->m_lastRect = o->rect();
+}
+
+void Output::availableGeometryChanged()
+{
+    // Once settled too (see Workspaces::EnsureReachable())
+    Workspaces::ScheduleReachable();
+
+    // Applying an output configuration: once done (outputs may still move)
+    if (Configuring)
+        return;
+
+    // Rotated, resized, a panel appeared/went away: its windows (any workspace's) stay inside it
+    for (Surface *surface : GetSurfaces())
+    {
+        auto *toplevel { static_cast<ToplevelRole*>(surface->toplevel()) };
+
+        if (!toplevel || !surface->mapped())
+            continue;
+
+        Workspaces *ws { Workspaces::Find(surface) };
+
+        if ((ws && static_cast<LOutput*>(&ws->output()) == this) || toplevel->exclusiveOutput() == this)
+            toplevel->keepReachable(this);
+    }
 }
 
 void Output::uninitializeGL()
@@ -184,8 +264,9 @@ void Output::handleSurfaceCallbacks() noexcept
         }
 
         // Hidden top bars (see TopbarAutoHide) stay on their output (e.g. keeping their scale)
+        // Hidden while the session is locked: they stay on their outputs too
         if (TopbarAutoHide::HidesSurface(surface) || Workspaces::IsParked(surface) || FullscreenAnimation::HidesSurface(surface) ||
-            Expose::HidesSurface(surface))
+            Expose::HidesSurface(surface) || (SessionLockManager::IsLocked() && !SessionLockManager::IsLockClientSurface(surface)))
             continue;
 
         bool outputFound;

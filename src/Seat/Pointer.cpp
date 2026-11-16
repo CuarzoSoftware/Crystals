@@ -1,3 +1,4 @@
+#include <Core/SessionLock.h>
 #include <cmath>
 #include <Louvre/Cursor/LShapeCursorSource.h>
 #include <Louvre/Cursor/LCursor.h>
@@ -48,6 +49,17 @@ static bool PointerSessionsActive() noexcept
 
 void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 {
+    // Locked: only the lock surfaces get it (Louvre's default, see Seat::surfaceAt())
+    if (SessionLockManager::IsLocked())
+    {
+        LPointer::pointerMoveEvent(e);
+
+        if (!focus())
+            SetShapeCursor(CZCursorShape::Default);
+
+        return;
+    }
+
     // Top bars hidden by fullscreen windows: revealed at the top edge, hidden when left
     struct AtExit { ~AtExit() { TopbarAutoHide::PointerMoved(); } } atExit;
 
@@ -134,6 +146,12 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
 
 void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 {
+    if (SessionLockManager::IsLocked())
+    {
+        LPointer::pointerButtonEvent(e);
+        return;
+    }
+
     if (!seat()->dnd()->dragging() && !draggingSurface() && Expose::PointerButton(e))
         return;
 
@@ -199,7 +217,7 @@ static constexpr SkScalar SwipeDecideDistance { 12.f };
 
 void Pointer::pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e)
 {
-    if (e.fingers != 3)
+    if (e.fingers != 3 || SessionLockManager::IsLocked())
     {
         LPointer::pointerSwipeBeginEvent(e);
         return;

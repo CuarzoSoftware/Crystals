@@ -11,12 +11,20 @@
 #include <Decorations/SSD.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Core/SessionLock.h>
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {
     // Volume keys: taken by the compositor (see Volume), never sent to clients.
     if (Volume::Get().keyEvent(e.code, e.isPressed))
         return;
+
+    // Locked: only to the lock surface (no shortcuts, see SessionLockManager)
+    if (SessionLockManager::IsLocked())
+    {
+        LKeyboard::keyEvent(e);
+        return;
+    }
 
     // Ctrl+Super+Up/Down (Exposé), Escape while it's shown, Ctrl+Super+Left/Right (workspaces):
     // never sent to clients
@@ -53,6 +61,18 @@ void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 void Keyboard::focusChanged()
 {
     LKeyboard::focusChanged();
+
+    // Locked: never another client (e.g. a window activated meanwhile), it'd get what's typed (the
+    // password): back to the lock surface, or nothing (the lock client died)
+    if (SessionLockManager::IsLocked())
+    {
+        if (!SessionLockManager::IsLockClientSurface(focus()))
+            if (LSurface *target { SessionLockManager::FocusSurface() }; target != focus())
+                setFocus(target);
+
+        return;
+    }
+
     if (!focus() || focus()->toplevel()) return;
     auto *parent { focus()->topmostParent() };
     if (!parent || !parent->toplevel()) return;

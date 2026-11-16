@@ -81,6 +81,11 @@ public:
     static constexpr Int32 WindowGap { 28 };
     static constexpr SkScalar ThumbHeight { 0.075f };
     static constexpr Int32 BarPadding { 22 };
+    // The workspace bar's blur: Firmament's top bar material (Marco's MBlurMaterial::MenuBar, keep in sync)
+    static constexpr SkScalar BarBlurRadius     { 24.f };
+    static constexpr SkScalar BarBlurSaturation { 1.8f };
+    static constexpr SkColor  BarBlurTintLight  { 0x99F6F6F6 };
+    static constexpr SkColor  BarBlurTintDark   { 0x8C1E1E1E };
     static constexpr Int32 ThumbGap { 18 };
     static constexpr Int32 ThumbOutlineGap { 2 }; // Between a thumbnail and its outline
 
@@ -306,6 +311,14 @@ private:
     std::unordered_map<Int32, std::shared_ptr<RImage>> m_closeShadows; // By scale (see layoutScreen())
 
     std::vector<std::unique_ptr<Window>> m_windows; // Bottom to top
+
+    // The laid out windows, clipped to the output (sliding workspaces would show them on the
+    // outputs next to it): the inner container is offset back, so they're placed in global
+    // coordinates. A window being dragged (or activated while closing) leaves it, above the bar.
+    AKContainer m_windowsClip { YGFlexDirectionColumn, false };
+    AKContainer m_windowsLayer { YGFlexDirectionColumn, false, &m_windowsClip };
+    void placeWindowsClip() noexcept;
+    void restackWindows() noexcept;
     std::vector<std::unique_ptr<Screen>> m_screens;
     bool m_active { false };
     Output *m_output { nullptr }; // Where it's shown (see ShownOn())

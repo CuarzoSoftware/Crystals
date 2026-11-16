@@ -29,6 +29,7 @@
 #include <Seat/DND.h>
 #include <Effects/DNDReturnAnimation.h>
 #include <Seat/Keyboard.h>
+#include <Core/SessionLock.h>
 
 #include <Effects/SurfaceBlurManager.h>
 #include <Effects/MinimizeAnimation.h>
@@ -266,6 +267,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new SurfaceBlurManager(params);
     case LFactoryObject::Type::LClient:
         return new Client(params);
+    case LFactoryObject::Type::LSessionLockManager:
+        return new SessionLockManager(params);
     case LFactoryObject::Type::LImageCaptureManager:
         return new CaptureManager(params);
     default:

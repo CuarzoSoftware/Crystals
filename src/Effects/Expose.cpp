@@ -227,6 +227,22 @@ void Expose::build() noexcept
 
     AKContainer &layer { GetScene()->expose };
 
+    // Below everything else of Exposé (see m_windowsClip)
+    const SkRegion noClipInput;
+    m_windowsClip.setInputRegion(&noClipInput);
+    m_windowsLayer.setInputRegion(&noClipInput);
+    m_windowsClip.layout().setPositionType(YGPositionTypeAbsolute);
+    m_windowsLayer.layout().setPositionType(YGPositionTypeAbsolute);
+    m_windowsClip.enableChildrenClipping(true);
+    m_windowsLayer.enableChildrenClipping(false);
+
+    if (layer.children(true).empty())
+        m_windowsClip.setParent(&layer);
+    else if (layer.children(true).front() != &m_windowsClip)
+        m_windowsClip.insertBefore(layer.children(true).front());
+
+    placeWindowsClip();
+
     // Every output's workspaces (created on first use: otherwise no window would be found in them)
     for (LOutput *o : compositor()->outputs())
         Workspaces::Of(o);
@@ -275,13 +291,13 @@ void Expose::build() noexcept
             }
 
             if (w->laidOut)
-                w->node.setParent(&layer);
+                w->node.setParent(&m_windowsLayer);
 
             snapshot(*w);
         }
     }
 
-    // The hovered window's outline, above the windows
+    // The hovered window's outline, above the windows (clipped with them: hidden while dragging)
     m_hoverWindow = nullptr;
     m_pressWindow = nullptr;
     m_windowDragging = false;
@@ -291,7 +307,7 @@ void Expose::build() noexcept
     m_windowOutline.setThickness(4);
     m_windowOutline.layout().setPositionType(YGPositionTypeAbsolute);
     m_windowOutline.setVisible(false);
-    m_windowOutline.setParent(&layer);
+    m_windowOutline.setParent(&m_windowsLayer);
 
     // The hovered window's close button (like the thumbnails')
     const bool dark { GetCompositor()->colorScheme() == CZColorScheme::Dark };
@@ -301,7 +317,7 @@ void Expose::build() noexcept
     m_windowCloseShadow.layout().setWidth(CloseSize + 2 * CloseShadowPad);
     m_windowCloseShadow.layout().setHeight(CloseSize + 2 * CloseShadowPad);
     m_windowCloseShadow.setVisible(false);
-    m_windowCloseShadow.setParent(&layer);
+    m_windowCloseShadow.setParent(&m_windowsLayer);
     m_windowClose.setBackgroundColor(dark ? 0xFF5A5A5E : 0xFFF2F2F7);
     m_windowClose.setInputRegion(&noInput);
     m_windowClose.layout().setPositionType(YGPositionTypeAbsolute);
@@ -312,7 +328,7 @@ void Expose::build() noexcept
     m_windowCloseIcon.setInputRegion(&noInput);
     m_windowCloseIcon.setColor(dark ? 0xFFEBEBF0 : 0xFF48484A);
     m_windowClose.setVisible(false);
-    m_windowClose.setParent(&layer);
+    m_windowClose.setParent(&m_windowsLayer);
 
     // Its bar (above the windows)
     if (m_output)
@@ -455,14 +471,19 @@ void Expose::layoutScreen(Screen &screen) noexcept
     screen.bar.layout().setHeight(screen.barHeight);
     screen.bar.setParent(&GetScene()->expose);
 
+    // It takes the top bar's place: the same material as Firmament's (Marco's MBlurMaterial::MenuBar),
+    // all of it from the blur (the fill stays transparent, it only holds the effect)
     screen.barFill.setInputRegion(&empty);
-    screen.barFill.setColor(CZAdaptiveColor(dark ? 0x59000000 : 0x40FFFFFF));
+    screen.barFill.setColor(CZAdaptiveColor(0));
     screen.barFill.layout().setPositionType(YGPositionTypeAbsolute);
     screen.barFill.layout().setWidthPercent(100.f);
     screen.barFill.layout().setHeightPercent(100.f);
     screen.barFill.setParent(&screen.bar);
     screen.blur.setFullSize();
     screen.blur.setColorScheme(scheme);
+    screen.blur.setBlurRadius(BarBlurRadius);
+    screen.blur.setMaterial(CZColorScheme::Light, { BarBlurSaturation, SkColor4f::FromColor(BarBlurTintLight) });
+    screen.blur.setMaterial(CZColorScheme::Dark,  { BarBlurSaturation, SkColor4f::FromColor(BarBlurTintDark) });
     screen.barFill.addBackgroundEffect(&screen.blur);
     screen.shadow.setInputRegion(&empty);
     screen.shadow.layout().setHeight(BarShadow);
@@ -775,9 +796,41 @@ void Expose::zoomStep(Float64 t) noexcept
     compositor()->repaintAllOutputs();
 }
 
+void Expose::placeWindowsClip() noexcept
+{
+    const SkIRect r { m_output ? m_output->rect() : SkIRect::MakeEmpty() };
+    m_windowsClip.layout().setPosition(YGEdgeLeft, r.x());
+    m_windowsClip.layout().setPosition(YGEdgeTop, r.y());
+    m_windowsClip.layout().setWidth(r.width());
+    m_windowsClip.layout().setHeight(r.height());
+    m_windowsLayer.layout().setPosition(YGEdgeLeft, -r.x());
+    m_windowsLayer.layout().setPosition(YGEdgeTop, -r.y());
+}
+
+void Expose::restackWindows() noexcept
+{
+    // Back in the clipped layer, bottom to top
+    for (auto &w : m_windows)
+    {
+        if (!w->laidOut)
+            continue;
+
+        w->node.setParent(nullptr);
+        w->node.setParent(&m_windowsLayer);
+    }
+
+    // The hovered window's outline and close button above them
+    for (AKNode *node : std::initializer_list<AKNode*>{ &m_windowOutline, &m_windowCloseShadow, &m_windowClose })
+    {
+        node->setParent(nullptr);
+        node->setParent(&m_windowsLayer);
+    }
+}
+
 void Expose::apply() noexcept
 {
     const SkScalar p { SkScalar(std::max(0.0, m_progress)) };
+    placeWindowsClip(); // The output may have moved/resized
     const SkScalar bar { std::clamp(p, 0.f, 1.f) };
 
     for (auto &w : m_windows)
@@ -895,6 +948,12 @@ void Expose::deactivate() noexcept
     for (auto &w : m_windows)
         w->node.setVisible(false);
 
+    // The hovered window's outline and close button too (they're not windows)
+    m_hoverWindow = nullptr;
+    m_windowOutline.setVisible(false);
+    m_windowClose.setVisible(false);
+    m_windowCloseShadow.setVisible(false);
+
     for (auto &screen : m_screens)
         screen->bar.setVisible(false);
 
@@ -911,6 +970,12 @@ void Expose::animateTo(Float64 target, Float64 velocity) noexcept
 
     if (m_open)
         activate();
+    else
+    {
+        // However it's closed (swipe, keys, click): no outline meanwhile
+        setHoverWindow(nullptr);
+        placeWindowOutline();
+    }
 
     m_spring.setStiffness(m_open ? SpringStiffness : CloseStiffness);
     m_spring.setFrom(m_progress);
@@ -1211,6 +1276,13 @@ bool Expose::PointerMove() noexcept
     {
         s_expose->dragWindowTo(pos);
         return true;
+    }
+
+    // Left its output: closed, the pointer goes on as usual (to the other output's surfaces)
+    if (!onIt && s_expose->m_open && !s_expose->m_zoomThumb && !s_expose->m_swiping)
+    {
+        s_expose->close();
+        return false;
     }
 
     // The hovered window (not under the bar)
@@ -1555,7 +1627,7 @@ SkRect Expose::windowGeometryShown(const Window &w) const noexcept
 
 void Expose::placeWindowOutline() noexcept
 {
-    Window *w { m_windowDragging ? nullptr : m_hoverWindow };
+    Window *w { m_windowDragging || !m_open ? nullptr : m_hoverWindow };
 
     if (!w || !w->node.visible() || w->shown.isEmpty())
     {
@@ -1649,7 +1721,10 @@ void Expose::endWindowPress(bool released) noexcept
     if (!released || !m_open)
     {
         if (dragged)
-            apply(); // Back where it was
+        {
+            restackWindows(); // Back among the others (clipped)
+            apply();          // Back where it was
+        }
         return;
     }
 

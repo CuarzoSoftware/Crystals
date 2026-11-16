@@ -2,10 +2,14 @@
 #define SCENE_H
 
 #include <AK/Nodes/AKContainer.h>
+#include <AK/Nodes/AKSolidColor.h>
+#include <Core/CZLinearAnimation.h>
 #include <AK/AKScene.h>
 #include <Louvre/Layout/LSurfaceLayer.h>
 #include <Louvre/Louvre.h>
+#include <Core/CZWeak.h>
 #include <array>
+#include <vector>
 
 using namespace CZ;
 
@@ -22,6 +26,9 @@ using namespace CZ;
  * - popups: popups (menus, tooltips) of any surface, above everything else (nested popups inside
  *   their parent popup). Input matches (see Seat::surfaceAt()).
  * - top: above everything (drag & drop icons).
+ * - lock: the session lock surfaces. While locked, every other container is hidden (see
+ *   setLocked() and SessionLockManager).
+ * - unlockFade: black over everything, fading out once unlocked.
  *
  * Louvre only knows its own layers: the shell and desktop surfaces are kept at the top of the
  * overlay layer and the bottom of the background layer (see Crystals::restack()), so input matches
@@ -52,12 +59,24 @@ public:
     AKContainer expose;
     AKContainer popups;
     AKContainer top;
+    AKContainer lock;
+    AKSolidColor unlockFade { CZAdaptiveColor(SK_ColorBLACK) };
+
+    /**
+     * @brief Shows only the lock surfaces (over black), or everything again: the desktop then fades
+     *        in from black (unlockFade).
+     */
+    void setLocked(bool locked) noexcept;
+    bool locked() const noexcept { return m_locked; }
 
     /// Where the view of a parentless surface goes (one of the containers above).
     AKContainer &containerFor(LSurface &surface) noexcept;
 
 private:
     Scene() noexcept;
+    bool m_locked { false };
+    std::vector<CZWeak<AKNode>> m_hiddenByLock;
+    CZLinearAnimation m_unlockFadeAnim;
 };
 
 #endif // SCENE_H

@@ -32,6 +32,16 @@ public:
     void paintGL() override;
     void moveGL() override;
     void resizeGL() override;
+
+    /// Its windows stay inside it (see ToplevelRole::keepReachable()).
+    void availableGeometryChanged() override;
+
+    /// An output configuration is being applied (see Seat::configureOutputsRequest()): windows are
+    /// handled once it's done, and outputs are left where it puts them.
+    static inline bool Configuring { false };
+
+    /// The outputs' last rects become the current ones (see resizeGL(): not rearranged then).
+    static void SyncLastRects() noexcept;
     void uninitializeGL() override;
 
     void initLayers() noexcept;
@@ -47,6 +57,9 @@ public:
 
     /// Its workspaces (created by Workspaces::Of()).
     std::unique_ptr<Workspaces> workspaces;
+private:
+    SkIRect m_lastRect {}; // See resizeGL()
+    CZTransform m_lastTransform { CZTransform::Normal }; // See paintGL()
 };
 
 #endif // OUTPUT_H

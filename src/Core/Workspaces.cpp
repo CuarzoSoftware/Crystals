@@ -404,6 +404,27 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
     }
 }
 
+void Workspaces::switchTo(Int64 index, ToplevelRole *toplevel) noexcept
+{
+    index = std::clamp<Int64>(index, 0, Int64(m_spaces.size()) - 1);
+    const bool changed { size_t(index) != m_current };
+    m_current = size_t(index);
+
+    if (changed)
+    {
+        seat()->dismissPopups();
+        updateDeskImage();
+    }
+
+    startSpring(Float64(index), 0.0, SpringStiffness);
+
+    if (changed)
+    {
+        activateCurrent(toplevel);
+        TopbarAutoHide::UpdateAll();
+    }
+}
+
 void Workspaces::showCurrent() noexcept
 {
     m_spring.pause();
@@ -454,8 +475,32 @@ void Workspaces::startSpring(Float64 target, Float64 velocity, Float64 stiffness
     m_spring.reset(); // (Re)starts it from there
 }
 
-void Workspaces::activateCurrent() noexcept
+void Workspaces::activateCurrent(ToplevelRole *preferred) noexcept
 {
+    // The window being revealed (e.g. a new one, not mapped yet: no other window must be activated
+    // over it, it'd lose the activation and keyboard focus once mapped)
+    if (preferred)
+    {
+        size_t index;
+
+        if (Find(preferred->surface(), &index) == this && index == m_current)
+        {
+            if (preferred->surface()->mapped())
+                preferred->surface()->raise();
+
+            if (!preferred->pendingConfiguration().windowState.has(CZWinActivated))
+                preferred->configureState(preferred->pendingConfiguration().windowState | CZWinActivated);
+
+            if (GetCompositor()->deskActive())
+            {
+                GetCompositor()->deactivateDesk();
+                GetCompositor()->updateActiveHeavenClient();
+            }
+
+            return;
+        }
+    }
+
     ToplevelRole *target { currentFullscreen() };
 
     // The desktop: its topmost window on this output
@@ -901,7 +946,7 @@ void Workspaces::Reveal(ToplevelRole &toplevel) noexcept
     Workspaces *ws { Find(toplevel.surface(), &index) };
 
     if (ws && index != ws->m_current)
-        ws->switchTo(Int64(index));
+        ws->switchTo(Int64(index), &toplevel);
 }
 
 bool Workspaces::KeyEvent(const CZKeyboardKeyEvent &e) noexcept

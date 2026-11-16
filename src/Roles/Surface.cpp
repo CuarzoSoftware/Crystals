@@ -87,6 +87,11 @@ void Surface::mappingChanged()
     {
         Workspaces::Sync(*static_cast<ToplevelRole*>(toplevel()));
         Expose::WindowsChanged();
+
+        // A new window activated before mapping (see ToplevelRole::stateChanged()): its workspace is
+        // known now that it's placed
+        if (mapped() && toplevel()->isActivated())
+            Workspaces::Reveal(*static_cast<ToplevelRole*>(toplevel()));
     }
 
     TopbarAutoHide::UpdateAll();

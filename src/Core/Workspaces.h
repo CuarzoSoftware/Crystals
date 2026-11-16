@@ -104,7 +104,8 @@ public:
     /// A window is being destroyed: its workspace goes away.
     static void Removed(ToplevelRole &toplevel) noexcept;
 
-    /// A window was activated: shows its workspace.
+    /// A window was activated: shows its workspace, keeping that window activated (not mapped yet:
+    /// once mapped, see Surface::mappingChanged()).
     static void Reveal(ToplevelRole &toplevel) noexcept;
 
     /// Ctrl+Super+Left/Right. Returns `true` if the key was taken.
@@ -211,6 +212,9 @@ public:
     /// Slides to workspace @p index (clamped), activating its window(s).
     void switchTo(Int64 index, Float64 velocity = 0.0, Float64 stiffness = SpringStiffness) noexcept;
 
+    /// Like switchTo(), activating @p toplevel (in that workspace) instead of its topmost window.
+    void switchTo(Int64 index, ToplevelRole *toplevel) noexcept;
+
     /**
      * @brief Like switchTo() without sliding (e.g. Exposé zooms into it instead).
      *
@@ -269,7 +273,9 @@ private:
     UInt32 m_lastDesktopId { 0 }; // The last desktop shown
     void close(size_t index, Int64 switchTo, Float64 stiffness = SpringStiffness) noexcept;
     void removeClosed() noexcept;
-    void activateCurrent() noexcept;
+    /// Activates the current workspace's window: @p preferred if given (e.g. the one being revealed,
+    /// maybe not mapped yet), else its fullscreen window or the topmost one of the desktop.
+    void activateCurrent(ToplevelRole *preferred = nullptr) noexcept;
     void startSpring(Float64 target, Float64 velocity, Float64 stiffness) noexcept;
     void onPosChanged() noexcept;
 

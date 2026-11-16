@@ -422,8 +422,9 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
 
     Workspaces::Sync(*this);
 
-    // Activated in another workspace (e.g. from the dock): show it
-    if (changes.has(StateChanged) && isActivated() && !prev.windowState.has(CZWinActivated))
+    // Activated in another workspace (e.g. from the dock): show it. Not mapped yet (Louvre applies
+    // the state before mapping): once mapped and placed, see Surface::mappingChanged()
+    if (changes.has(StateChanged) && isActivated() && !prev.windowState.has(CZWinActivated) && surface()->mapped())
         Workspaces::Reveal(*this);
 
     TopbarAutoHide::UpdateAll(); // (Un)fullscreened: hide/show the top bars of its output

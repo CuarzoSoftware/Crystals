@@ -49,6 +49,11 @@ void Crystals::initialized() noexcept
     auto core { CZCore::Get() };
     core->setAnimationInterval(64);
 
+    // Kay's theme assets (SSD) through the AssetBroker, but drawn here: the compositor never waits
+    // for another process (requests to the service are synchronous, and would run with the
+    // compositor locked). Before Kay uses it, which would create it in ABMode::Auto.
+    assetBroker = ABCore::GetOrMake(ABMode::Local);
+
     app = AKApp::GetOrMake();
     scene = Scene::Make();
     initColorScheme();

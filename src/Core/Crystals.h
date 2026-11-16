@@ -5,6 +5,7 @@
 #include <Louvre/Louvre.h>
 #include <Louvre/LCompositor.h>
 #include <AK/AKApp.h>
+#include <AssetBroker/ABCore.h>
 #include <Heaven/Compositor/HNCompositor.h>
 #include <CZ/Core/CZColorSchemeMonitor.h>
 
@@ -19,6 +20,7 @@ public:
     std::shared_ptr<AKApp> app;
     std::shared_ptr<Scene> scene;
     std::shared_ptr<HNCompositor> heaven;
+    std::shared_ptr<ABCore> assetBroker; ///< Always ABMode::Local (see initialized())
 
     /// The layer surface scope of Desk (the desktop: background and icons).
     static constexpr const char *DeskScope { "cz-desk" };

@@ -91,7 +91,12 @@ void Surface::mappingChanged()
         // A new window activated before mapping (see ToplevelRole::stateChanged()): its workspace is
         // known now that it's placed
         if (mapped() && toplevel()->isActivated())
+        {
             Workspaces::Reveal(*static_cast<ToplevelRole*>(toplevel()));
+
+            // E.g. an app launched from the dock: Exposé closes onto its window
+            Expose::LeaveFor(*static_cast<ToplevelRole*>(toplevel()));
+        }
     }
 
     TopbarAutoHide::UpdateAll();

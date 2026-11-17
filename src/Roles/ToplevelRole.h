@@ -55,6 +55,9 @@ public:
     void setFullscreenRequest(LOutput *preferredOutput) override;
     void unsetFullscreenRequest() override;
 
+    /// From a dock (foreign toplevel) or an activation token: also leaves Exposé onto it.
+    void activateRequest() override;
+
     /// Leaves fullscreen (back to the desktop workspace), optionally without FullscreenAnimation.
     void leaveFullscreen(bool animated) noexcept;
     void titleChanged() override;

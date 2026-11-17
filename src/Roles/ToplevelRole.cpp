@@ -166,6 +166,13 @@ void ToplevelRole::unsetFullscreenRequest()
     leaveFullscreen(true);
 }
 
+void ToplevelRole::activateRequest()
+{
+    // Exposé closes onto it, like when it's clicked there (it activates and raises it)
+    if (!Expose::LeaveFor(*this))
+        LToplevelRole::activateRequest();
+}
+
 void ToplevelRole::keepReachable(LOutput *output) noexcept
 {
     LSurface *surf { surface() };

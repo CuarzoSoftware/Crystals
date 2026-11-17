@@ -2,6 +2,7 @@
 #include <Core/Events/CZPointerEnterEvent.h>
 #include <Core/CZCore.h>
 #include <Scene/Scene.h>
+#include <Effects/TopbarAutoHide.h>
 #include <Core/Crystals.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Louvre/LCompositor.h>
@@ -26,7 +27,7 @@ Scene::Scene() noexcept
     for (auto &layer : layers)
         containers.push_back(&layer);
 
-    containers.insert(containers.end(), { &animations, &shell, &expose, &popups, &top, &lock });
+    containers.insert(containers.end(), { &animations, &shell, &expose, &docks, &popups, &top, &lock });
 
     for (AKContainer *container : containers)
     {
@@ -35,7 +36,7 @@ Scene::Scene() noexcept
     }
 
     // Their surfaces (or animations) may be anywhere
-    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &expose, &popups, &top, &lock })
+    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &expose, &docks, &popups, &top, &lock })
         container->enableChildrenClipping(false);
 
     // Above everything, hidden until unlocked
@@ -122,8 +123,9 @@ AKContainer &Scene::containerFor(LSurface &surface) noexcept
     if (Crystals::IsDesk(&surface))
         return desktop;
 
+    // The docks (Shelf) stay above Exposé, top bars go under its workspace bar
     if (Crystals::IsShell(&surface))
-        return shell;
+        return surface.layerRole() && TopbarAutoHide::IsTopbar(*surface.layerRole()) ? shell : docks;
 
     return layers[surface.layer()];
 }

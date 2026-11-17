@@ -95,7 +95,7 @@ public:
     /// The output it's shown on (while Active()).
     static Output *ShownOn() noexcept;
 
-    /// How far up the top bars are moved, out of the way of the workspaces bar (with its progress).
+    /// How far up the top bars are moved: none while they fade out, above the screen once invisible.
     static Int32 TopbarOffset(const LLayerRole &layerRole) noexcept;
 
     /// Shadow below the workspaces bar: its height and opacity.
@@ -128,6 +128,14 @@ public:
 
     /// Opens it if closed (or closing), closes it otherwise.
     static void Toggle() noexcept;
+
+    /**
+     * @brief A window was asked to be activated from outside (e.g. clicked or launched from the
+     *        dock): if open, closes onto it, like clicking it.
+     *
+     * @return `true` if it closed (it activates and raises @p toplevel), `false` if it wasn't open.
+     */
+    static bool LeaveFor(ToplevelRole &toplevel) noexcept;
 
     /// Ctrl+Super+Up/Down, Escape. Returns `true` if the key was taken.
     static bool KeyEvent(const CZKeyboardKeyEvent &e) noexcept;

@@ -171,7 +171,16 @@ Int32 TopbarAutoHide::slideFor(Float64 progress, const ToplevelRole *fullscreen)
 const ToplevelRole *TopbarAutoHide::leaving() const noexcept
 {
     const Workspaces *ws { m_output.workspaces.get() };
-    return ws && ws->moving() && m_leavingProgress > 0.0 ? m_leaving.get() : nullptr;
+
+    if (!ws || !ws->moving() || m_leavingProgress <= 0.0 || !m_leaving)
+        return nullptr;
+
+    // Still in its fullscreen workspace, out of the current one. Not if it left fullscreen: it's
+    // in the desktop then, where the bars have their own view (a mirror there would be drawn over
+    // them, its blur sampling them)
+    size_t index;
+    const ToplevelRole *left { m_leaving.get() };
+    return Workspaces::Find(left->surface(), &index) == ws && !ws->isDesktop(index) && index != ws->current() ? left : nullptr;
 }
 
 ToplevelRole *TopbarAutoHide::findFullscreen() const noexcept
@@ -312,6 +321,7 @@ void TopbarAutoHide::updateMirrors() noexcept
         m->node.layout().setPositionType(YGPositionTypeAbsolute);
         m->node.setVisible(false);
         m->node.setParent(&GetScene()->shell);
+        m->blur.bdt.setCaptureInsideTarget(false, true); // Vertically only: it slides sideways with its workspace
     }
 }
 

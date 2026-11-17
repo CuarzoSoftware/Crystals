@@ -110,11 +110,11 @@ Output *Expose::ShownOn() noexcept
 }
 
 /*
- * The top bars leave (slide up and fade out) within the first TopbarHideEnd of Exposé's progress,
- * well before the workspace bar is fully in: otherwise they'd show blurred through it. Closing,
- * they come back in the last part.
+ * The top bars fade out in place (their blur too) within the first TopbarHideEnd of Exposé's
+ * progress, before the workspace bar is fully in: otherwise they'd show blurred through it.
+ * Closing, they fade back in the last part.
  */
-static constexpr Float64 TopbarHideEnd { 0.2 };
+static constexpr Float64 TopbarHideEnd { 0.35 }; // The spring is fastest at first: less looks abrupt
 
 static Float64 TopbarHideProgress(Float64 progress) noexcept
 {
@@ -126,9 +126,13 @@ Int32 Expose::TopbarOffset(const LLayerRole &layerRole) noexcept
     if (!Active() || !TopbarAutoHide::IsTopbar(layerRole) || layerRole.exclusiveOutput() != s_expose->m_output)
         return 0;
 
+    // In place while fading. Once invisible, moved above the screen: no input reaches them under
+    // the workspace bar
+    if (TopbarHideProgress(s_expose->m_progress) < 1.0)
+        return 0;
+
     const LSurface *s { layerRole.surface() };
-    const Float64 p { TopbarHideProgress(s_expose->m_progress) };
-    return Int32(std::lround(p * (s->size().height() + std::max(0, layerRole.margins().top))));
+    return s->size().height() + std::max(0, layerRole.margins().top);
 }
 
 bool Expose::HidesSurface(const LSurface *surface) noexcept
@@ -485,6 +489,7 @@ void Expose::layoutScreen(Screen &screen) noexcept
     screen.blur.setMaterial(CZColorScheme::Light, { BarBlurSaturation, SkColor4f::FromColor(BarBlurTintLight) });
     screen.blur.setMaterial(CZColorScheme::Dark,  { BarBlurSaturation, SkColor4f::FromColor(BarBlurTintDark) });
     screen.barFill.addBackgroundEffect(&screen.blur);
+    screen.blur.bdt.setCaptureInsideTarget(false, true); // It slides in from above the screen
     screen.shadow.setInputRegion(&empty);
     screen.shadow.layout().setHeight(BarShadow);
     screen.shadow.layout().setPosition(YGEdgeBottom, -BarShadow);
@@ -859,7 +864,7 @@ void Expose::apply() noexcept
 
     placeWindowOutline();
 
-    // Its output's top bars fade out as they slide up (their blur too, see TopbarHideProgress())
+    // Its output's top bars fade out in place (their blur too, see TopbarHideProgress())
     const SkScalar topbarOpacity { 1.f - SkScalar(TopbarHideProgress(bar)) };
 
     for (Surface *surface : GetSurfaces())
@@ -1024,6 +1029,18 @@ void Expose::Toggle() noexcept
         e->close();
     else
         e->animateTo(1.0, 0.0);
+}
+
+bool Expose::LeaveFor(ToplevelRole &toplevel) noexcept
+{
+    Expose *e { Get(false) };
+
+    // Not while zooming into a workspace (it's leaving already)
+    if (!e || !e->m_active || !e->m_open || e->m_zoomThumb)
+        return false;
+
+    e->close(&toplevel);
+    return true;
 }
 
 void Expose::WindowsChanged() noexcept

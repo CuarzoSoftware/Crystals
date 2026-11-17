@@ -1,6 +1,7 @@
 #include <CZ/skia/core/SkRegion.h>
 #include <Effects/SurfaceBlurManager.h>
 #include <Roles/Surface.h>
+#include <Louvre/Roles/LLayerRole.h>
 #include <LClient.h>
 #include <CZ/skia/core/SkRRect.h>
 #include <CZ/skia/pathops/SkPathOps.h>
@@ -36,11 +37,32 @@ void SurfaceBlurManager::propsChanged(CZBitset<PropChanges> changes, const Props
 
     if (changes.has(PropChanges::StateChanged))
     {
+        updateCaptureInside();
+
         if (props().state == Enabled)
             surface.view.view.addBackgroundEffect(&fx);
         else
             surface.view.view.removeBackgroundEffect(&fx);
     }
+}
+
+void SurfaceBlurManager::updateCaptureInside() noexcept
+{
+    // Shell panels (top bar, dock) slide in from outside the screen through the edge they're
+    // anchored to: there they blur what they'll be over once inside, not the thin strip already in
+    // (see AKBackgroundDamageTracker). Not across: e.g. the top bar slides sideways with its
+    // workspace and keeps blurring what's under it.
+    const LLayerRole *layer { surface()->layerRole() };
+
+    if (!layer)
+    {
+        fx.bdt.setCaptureInsideTarget(false, false);
+        return;
+    }
+
+    const auto anchor { layer->anchor() };
+    fx.bdt.setCaptureInsideTarget(anchor.has(CZEdgeLeft) != anchor.has(CZEdgeRight),
+                                  anchor.has(CZEdgeTop) != anchor.has(CZEdgeBottom));
 }
 
 void SurfaceBlurManager::setCompositorOpacity(SkScalar opacity) noexcept

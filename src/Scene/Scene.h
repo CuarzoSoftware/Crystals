@@ -21,8 +21,9 @@ using namespace CZ;
  * - backdrops: behind fullscreen workspaces (see Workspaces).
  * - layers: one per Louvre layer (background ... overlay), the surfaces of each.
  * - animations: windows (un)minimizing, flying to/from the dock.
- * - shell: the desktop shell's panels (docks, Firmament's top bar), above every other surface.
- * - expose: Exposé (see Expose), above the shell but the dock (input), below popups.
+ * - shell: the desktop shell's top bars (Firmament's), above every other surface.
+ * - expose: Exposé (see Expose), above the top bars, below the docks and popups.
+ * - docks: the desktop shell's other panels (Shelf's docks), above Exposé (they keep working there).
  * - popups: popups (menus, tooltips) of any surface, above everything else (nested popups inside
  *   their parent popup). Input matches (see Seat::surfaceAt()).
  * - top: above everything (drag & drop icons).
@@ -57,6 +58,7 @@ public:
     AKContainer animations;
     AKContainer shell;
     AKContainer expose;
+    AKContainer docks;
     AKContainer popups;
     AKContainer top;
     AKContainer lock;

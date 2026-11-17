@@ -35,6 +35,10 @@ public:
      */
     void setCompositorOpacity(SkScalar opacity) noexcept;
 
+    /// Which axes it samples inside the screen while sticking out (see AKBackgroundDamageTracker):
+    /// those of the edge a layer surface is anchored to. Its state or anchor changed.
+    void updateCaptureInside() noexcept;
+
     /// Re-blurred while rendering (see Output::paintGL()): captures of its toplevel are redrawn.
     bool blurred { false };
 

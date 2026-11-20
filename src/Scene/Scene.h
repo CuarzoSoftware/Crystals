@@ -27,6 +27,7 @@ using namespace CZ;
  * - popups: popups (menus, tooltips) of any surface, above everything else (nested popups inside
  *   their parent popup). Input matches (see Seat::surfaceAt()).
  * - top: above everything (drag & drop icons).
+ * - blackouts: black over outputs that changed size until their shell caught up (see ResizeBlackout).
  * - lock: the session lock surfaces. While locked, every other container is hidden (see
  *   setLocked() and SessionLockManager).
  * - unlockFade: black over everything, fading out once unlocked.
@@ -61,6 +62,7 @@ public:
     AKContainer docks;
     AKContainer popups;
     AKContainer top;
+    AKContainer blackouts;
     AKContainer lock;
     AKSolidColor unlockFade { CZAdaptiveColor(SK_ColorBLACK) };
 

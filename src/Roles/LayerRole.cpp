@@ -5,6 +5,7 @@
 #include <Core/Crystals.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Louvre/Cursor/LCursor.h>
 #include <Effects/SurfaceBlurManager.h>
 
 SkIPoint LayerRole::rolePos() const
@@ -14,6 +15,32 @@ SkIPoint LayerRole::rolePos() const
     // Top bars: above the screen once faded out by Exposé (no input under its workspaces bar)
     return LLayerRole::rolePos() - SkIPoint::Make(0, TopbarAutoHide::TopbarOffset(*this) + Expose::TopbarOffset(*this)) +
            Workspaces::ParkOffset(surface());
+}
+
+void LayerRole::configureRequest()
+{
+    // As LLayerRole's default (keep in sync), only remembering the size sent
+    if (!exclusiveOutput())
+        setExclusiveOutput(cursor()->output());
+
+    surface()->sendOutputEnterEvent(exclusiveOutput());
+
+    SkISize newSize { size() };
+    const CZBitset<CZEdge> edge { exclusiveZone().edge() };
+
+    if (newSize.width() == 0 || edge == 0 || anchor().hasAll(CZEdgeLeft | CZEdgeRight))
+        newSize.fWidth = exclusiveZone().rect().width();
+
+    if (newSize.height() == 0 || edge == 0 || anchor().hasAll(CZEdgeTop | CZEdgeBottom))
+        newSize.fHeight = exclusiveZone().rect().height();
+
+    m_configuredSize = newSize;
+    configureSize(newSize);
+}
+
+bool LayerRole::settled() const noexcept
+{
+    return m_configuredSize.isEmpty() || surface()->size() == m_configuredSize;
 }
 
 void LayerRole::stateChanged(CZBitset<Changes> changes, const State &prev) noexcept

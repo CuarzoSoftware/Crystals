@@ -27,7 +27,7 @@ Scene::Scene() noexcept
     for (auto &layer : layers)
         containers.push_back(&layer);
 
-    containers.insert(containers.end(), { &animations, &shell, &expose, &docks, &popups, &top, &lock });
+    containers.insert(containers.end(), { &animations, &shell, &expose, &docks, &popups, &top, &blackouts, &lock });
 
     for (AKContainer *container : containers)
     {
@@ -36,7 +36,7 @@ Scene::Scene() noexcept
     }
 
     // Their surfaces (or animations) may be anywhere
-    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &expose, &docks, &popups, &top, &lock })
+    for (AKContainer *container : { &backdrops, &layers[Overlay], &animations, &shell, &expose, &docks, &popups, &top, &blackouts, &lock })
         container->enableChildrenClipping(false);
 
     // Above everything, hidden until unlocked

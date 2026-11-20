@@ -9,6 +9,7 @@
 #include <Core/CZSpringAnimation.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
+#include <Effects/ResizeBlackout.h>
 #include <memory>
 
 class Output final : public LOutput
@@ -57,6 +58,9 @@ public:
 
     /// Its workspaces (created by Workspaces::Of()).
     std::unique_ptr<Workspaces> workspaces;
+
+    /// Black while its shell catches up with a new size (see resizeGL()).
+    std::unique_ptr<ResizeBlackout> blackout;
 private:
     SkIRect m_lastRect {}; // See resizeGL()
     CZTransform m_lastTransform { CZTransform::Normal }; // See paintGL()

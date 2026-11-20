@@ -36,6 +36,7 @@ Output::Resources::Resources(Output &output) noexcept : output(output)
 void Output::initializeGL()
 {
     res = std::make_unique<Resources>(*this);
+    blackout = std::make_unique<ResizeBlackout>(*this);
     initLayers();
     m_lastRect = rect();
 }
@@ -44,6 +45,9 @@ void Output::paintGL()
 {
     auto core { CZCore::Get() };
     core->updateAnimations();
+
+    // Its shell caught up with a new size: the black fades out
+    blackout->update();
 
     // Content of outputs switching workspaces is only drawn on them
     Workspaces::BeginRender(this);
@@ -117,6 +121,10 @@ void Output::resizeGL()
     const SkIRect now { rect() };
     m_lastRect = now;
 
+    // A new size: black until the desktop, the docks and the top bars committed theirs
+    if (!prev.isEmpty() && prev.size() != now.size())
+        blackout->begin();
+
     if (!Configuring && !prev.isEmpty() && prev.topLeft() == now.topLeft() && prev.size() != now.size())
     {
         // Their windows move with them
@@ -182,6 +190,7 @@ void Output::availableGeometryChanged()
 
 void Output::uninitializeGL()
 {
+    blackout.reset();
     res.reset();
 }
 

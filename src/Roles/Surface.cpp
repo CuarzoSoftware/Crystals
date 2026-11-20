@@ -6,6 +6,7 @@
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ResizeBlackout.h>
 
 void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); Expose::SurfaceDamaged(this); }
 void Surface::opaqueRegionChanged()     { view.syncOpaqueRegion(); }
@@ -13,7 +14,7 @@ void Surface::invisibleRegionChanged()  { view.syncInvisibleRegion(); }
 void Surface::inputRegionChanged()      { view.syncInputRegion(); }
 
 void Surface::bufferSizeChanged()       { view.syncImage(); }
-void Surface::sizeChanged()             { view.syncSize(); }
+void Surface::sizeChanged()             { view.syncSize(); ResizeBlackout::SurfaceResized(this); }
 void Surface::srcRectChanged()          { view.syncSrcRect(); }
 void Surface::bufferScaleChanged()      { view.syncScale(); }
 void Surface::bufferTransformChanged()  { view.syncTransform(); }

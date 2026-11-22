@@ -1,4 +1,5 @@
 #include <Core/Volume.h>
+#include <Core/SoundSettings.h>
 #include <Core/Crystals.h>
 #include <Core/Log.h>
 #include <Effects/VolumeHUD.h>
@@ -279,8 +280,9 @@ void Volume::run(Action action) noexcept
         else
             level = -1.f;
 
-        // How loud it is now (not when silent). At most a few per second while holding the key.
-        if (action != Mute && level > 0.f && !muted && access(FeedbackSound, R_OK) == 0)
+        // How loud it is now (not when silent), unless disabled (System Settings → Sound). At most a
+        // few per second while holding the key.
+        if (action != Mute && level > 0.f && !muted && access(FeedbackSound, R_OK) == 0 && SoundSettings::Load().volumeFeedback)
         {
             static auto lastSound { std::chrono::steady_clock::time_point() };
             const auto now { std::chrono::steady_clock::now() };

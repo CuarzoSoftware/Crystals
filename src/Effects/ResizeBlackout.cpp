@@ -33,8 +33,68 @@ void ResizeBlackout::begin() noexcept
     m_black.setVisible(true);
     placeBlack();
     m_waiting = true;
-    m_timeout.start(TimeoutMs); // Restarted if resized again
+
+    // In a group: its timeout (see BeginAll())
+    if (s_group)
+    {
+        m_inGroup = true;
+        m_timeout.stop();
+    }
+    else
+        m_timeout.start(TimeoutMs); // Restarted if resized again
+
     m_output.repaint();
+}
+
+void ResizeBlackout::joinGroup() noexcept
+{
+    m_needsDesk = true;
+    begin();
+}
+
+void ResizeBlackout::BeginAll(UInt32 timeoutMs) noexcept
+{
+    if (!s_groupTimeout)
+        s_groupTimeout = std::make_unique<CZTimer>([](CZTimer*){ EndAll(); }); // Some shell never caught up: shown anyway
+
+    s_group = true;
+    s_groupTimeout->start(timeoutMs);
+
+    for (LOutput *o : compositor()->outputs())
+        if (auto *output { static_cast<Output*>(o) }; output->blackout)
+            output->blackout->begin();
+}
+
+bool ResizeBlackout::GroupSettled() noexcept
+{
+    for (LOutput *o : compositor()->outputs())
+        if (auto *output { static_cast<Output*>(o) }; output->blackout && output->blackout->m_waiting && !output->blackout->settled())
+            return false;
+
+    return true;
+}
+
+void ResizeBlackout::EndAll() noexcept
+{
+    if (!s_group)
+        return;
+
+    s_group = false;
+
+    if (s_groupTimeout)
+        s_groupTimeout->stop();
+
+    for (LOutput *o : compositor()->outputs())
+    {
+        auto *output { static_cast<Output*>(o) };
+
+        if (!output->blackout)
+            continue;
+
+        output->blackout->m_inGroup = false;
+        output->blackout->m_needsDesk = false;
+        output->blackout->end();
+    }
 }
 
 void ResizeBlackout::update() noexcept
@@ -44,7 +104,16 @@ void ResizeBlackout::update() noexcept
 
     placeBlack();
 
-    if (m_waiting && settled())
+    if (!m_waiting)
+        return;
+
+    // Together with the other outputs
+    if (m_inGroup)
+    {
+        if (GroupSettled())
+            EndAll();
+    }
+    else if (settled())
         end();
 }
 
@@ -59,6 +128,19 @@ void ResizeBlackout::SurfaceResized(LSurface *surface) noexcept
 
 bool ResizeBlackout::settled() const noexcept
 {
+    // Just enabled: its desktop isn't there yet
+    if (m_needsDesk)
+    {
+        bool desk { false };
+
+        for (Surface *s : GetSurfaces())
+            if (!s->parent() && s->mapped() && s->layerRole() && s->layerRole()->exclusiveOutput() == &m_output && Crystals::IsDesk(s))
+                desk = true;
+
+        if (!desk)
+            return false;
+    }
+
     // The desktop shell of this output: each committed the size it was configured with
     for (Surface *s : GetSurfaces())
     {

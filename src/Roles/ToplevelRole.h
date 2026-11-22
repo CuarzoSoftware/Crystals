@@ -28,6 +28,9 @@ public:
     /// fullscreen (it goes back there).
     UInt32 desktopId { 0 };
 
+    /// Wants the user's attention once mapped (see Attention::Request())
+    bool attentionPending { false };
+
     /// Creates/destroys/re-lays out the decorations (mode, state or size changed).
     void updateDecorations() noexcept;
 

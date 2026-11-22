@@ -1,5 +1,6 @@
 #include <Core/SessionLock.h>
 #include <Roles/ToplevelRole.h>
+#include <Core/Attention.h>
 #include <Roles/Surface.h>
 #include <Effects/MinimizeAnimation.h>
 #include <Effects/TopbarAutoHide.h>
@@ -101,6 +102,15 @@ void ToplevelRole::configureRequest()
 {
     // The decoration mode first: the sizes below depend on it.
     LToplevelRole::configureRequest();
+
+    // Landing in another workspace (e.g. the user is in a fullscreen window's): not activated, its
+    // dock icon bounces instead (see Attention)
+    if (!surface()->mapped() && Attention::WouldLeave(*this) && !Attention::IsUserLaunch(appId()))
+    {
+        configureState(pendingConfiguration().windowState & ~CZWinActivated);
+        Attention::Request(*this);
+    }
+
     configureDecorationMode(wantedDecorationMode());
     configureAvailableBounds();
 
@@ -150,6 +160,10 @@ void ToplevelRole::setMaximizedRequest()
 
 void ToplevelRole::setFullscreenRequest(LOutput *preferredOutput)
 {
+    // Child toplevels (dialogs, etc.) stay with their parent: never fullscreen
+    if (surface()->parent())
+        return;
+
     LOutput *output { preferredOutput ? preferredOutput : cursor()->output() };
 
     if (pendingConfiguration().windowState.has(CZWinFullscreen) || !output)
@@ -168,6 +182,14 @@ void ToplevelRole::unsetFullscreenRequest()
 
 void ToplevelRole::activateRequest()
 {
+    // An app asking to be activated in another workspace: its dock icon bounces instead, unless the
+    // user just launched it from the dock (see Attention)
+    if (Attention::ActivatingByToken() && Attention::WouldLeave(*this) && !Attention::ConsumeUserLaunch(appId()))
+    {
+        Attention::Request(*this);
+        return;
+    }
+
     // Exposé closes onto it, like when it's clicked there (it activates and raises it)
     if (!Expose::LeaveFor(*this))
         LToplevelRole::activateRequest();

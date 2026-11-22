@@ -18,8 +18,11 @@
 
 #include <Scene/Scene.h>
 #include <Seat/Seat.h>
+#include <Core/OutputConfig.h>
+#include <Effects/ResizeBlackout.h>
 
 #include <Roles/Surface.h>
+#include <Core/SoundSettings.h>
 
 #include <libinput.h>
 
@@ -85,6 +88,11 @@ void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
     configureLibinputDevice(dev->nativeHandle.libinput);
 }
 
+void Seat::outputPlugged(LOutput *output)
+{
+    OutputConfig::OutputPlugged(output);
+}
+
 void Seat::outputUnplugged(LOutput *output)
 {
     // Exposé shown there: gone with it
@@ -103,6 +111,17 @@ void Seat::outputUnplugged(LOutput *output)
     Workspaces::FollowOutputs(placements);
     Workspaces::Place(evacuation);
     Workspaces::ScheduleReachable();
+
+    // The remaining ones as they were saved together, if they were
+    OutputConfig::Restore(output);
+}
+
+void Seat::systemBellRequest(LClient *client, LSurface *surface)
+{
+    // The alert sound chosen in System Settings (Sound)
+    CZ_UNUSED(client)
+    CZ_UNUSED(surface)
+    SoundSettings::PlayAlert();
 }
 
 bool Seat::configureOutputsRequest(LClient *client, const std::vector<OutputConfiguration> &configurations)
@@ -123,6 +142,9 @@ bool Seat::configureOutputsRequest(LClient *client, const std::vector<OutputConf
         evacuations.push_back(Workspaces::Evacuate(&conf.output));
     }
 
+    // Black until every shell caught up (outputs enabled now join it, see Output::initializeGL())
+    ResizeBlackout::BeginAll();
+
     Output::Configuring = true;
     const bool ok { LSeat::configureOutputsRequest(client, configurations) };
     Output::Configuring = false;
@@ -137,6 +159,11 @@ bool Seat::configureOutputsRequest(LClient *client, const std::vector<OutputConf
         Workspaces::Place(evacuation);
 
     Workspaces::ScheduleReachable();
+
+    // Applied by a client (e.g. System Settings): remembered (unless reverted meanwhile)
+    if (ok && client)
+        OutputConfig::ScheduleSave();
+
     return ok;
 }
 

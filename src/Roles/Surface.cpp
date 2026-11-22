@@ -1,4 +1,5 @@
 #include <Roles/ToplevelRole.h>
+#include <Core/Attention.h>
 #include <Core/Crystals.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Roles/Surface.h>
@@ -88,6 +89,26 @@ void Surface::mappingChanged()
     {
         Workspaces::Sync(*static_cast<ToplevelRole*>(toplevel()));
         Expose::WindowsChanged();
+
+        // A new window: launched by the user from the dock, it's shown wherever it opened. Else, if
+        // it landed in another workspace, its dock icon bounces (see Attention). Its app id is
+        // surely known by now.
+        if (mapped())
+        {
+            auto &role { *static_cast<ToplevelRole*>(toplevel()) };
+            const bool launched { Attention::ConsumeUserLaunch(role.appId()) };
+
+            if (role.attentionPending)
+            {
+                if (launched)
+                {
+                    role.attentionPending = false;
+                    role.configureState(role.pendingConfiguration().windowState | CZWinActivated);
+                }
+                else
+                    Attention::Request(role);
+            }
+        }
 
         // A new window activated before mapping (see ToplevelRole::stateChanged()): its workspace is
         // known now that it's placed

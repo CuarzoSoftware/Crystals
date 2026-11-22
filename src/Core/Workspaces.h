@@ -108,6 +108,9 @@ public:
     /// once mapped, see Surface::mappingChanged()).
     static void Reveal(ToplevelRole &toplevel) noexcept;
 
+    /// Tells the dock again whether each output shows a fullscreen window's workspace (see ShellBus).
+    static void NotifyFullscreenAll() noexcept;
+
     /// Ctrl+Super+Left/Right. Returns `true` if the key was taken.
     static bool KeyEvent(const CZKeyboardKeyEvent &e) noexcept;
 
@@ -277,6 +280,10 @@ private:
     /// maybe not mapped yet), else its fullscreen window or the topmost one of the desktop.
     void activateCurrent(ToplevelRole *preferred = nullptr) noexcept;
     void startSpring(Float64 target, Float64 velocity, Float64 stiffness) noexcept;
+
+    /// Tells the dock if the shown workspace became (or stopped being) a fullscreen window's (see ShellBus).
+    void notifyFullscreen(bool force = false) noexcept;
+    bool m_notifiedFullscreen { false };
     void onPosChanged() noexcept;
 
     Output &m_output;

@@ -1,4 +1,5 @@
 #include <Core/Workspaces.h>
+#include <Core/ShellBus.h>
 #include <Core/CZTimer.h>
 #include <Core/Crystals.h>
 #include <Roles/ToplevelRole.h>
@@ -268,6 +269,7 @@ Workspaces::Space &Workspaces::insert(size_t index, ToplevelRole *toplevel) noex
     }
 
     onPosChanged();
+    notifyFullscreen();
     return ref;
 }
 
@@ -402,6 +404,8 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
         activateCurrent();
         TopbarAutoHide::UpdateAll();
     }
+
+    notifyFullscreen();
 }
 
 void Workspaces::switchTo(Int64 index, ToplevelRole *toplevel) noexcept
@@ -423,6 +427,8 @@ void Workspaces::switchTo(Int64 index, ToplevelRole *toplevel) noexcept
         activateCurrent(toplevel);
         TopbarAutoHide::UpdateAll();
     }
+
+    notifyFullscreen();
 }
 
 void Workspaces::showCurrent() noexcept
@@ -454,6 +460,8 @@ void Workspaces::jumpTo(Int64 index, bool show) noexcept
         activateCurrent();
         TopbarAutoHide::UpdateAll();
     }
+
+    notifyFullscreen();
 }
 
 void Workspaces::startSpring(Float64 target, Float64 velocity, Float64 stiffness) noexcept
@@ -938,6 +946,25 @@ void Workspaces::Removed(ToplevelRole &toplevel) noexcept
                     ws->close(i, i == ws->m_current ? Int64(i) - 1 : -1);
                     return;
                 }
+}
+
+void Workspaces::notifyFullscreen(bool force) noexcept
+{
+    // A fullscreen window's (or one being left, still in view until it slides away)
+    const bool fullscreen { m_current < m_spaces.size() && !isDesktop(m_current) };
+
+    if (!force && fullscreen == m_notifiedFullscreen)
+        return;
+
+    m_notifiedFullscreen = fullscreen;
+    ShellBus::EmitFullscreenChanged(fullscreen, m_output.name());
+}
+
+void Workspaces::NotifyFullscreenAll() noexcept
+{
+    for (LOutput *output : compositor()->outputs())
+        if (Workspaces *ws { Existing(output) })
+            ws->notifyFullscreen(true);
 }
 
 void Workspaces::Reveal(ToplevelRole &toplevel) noexcept

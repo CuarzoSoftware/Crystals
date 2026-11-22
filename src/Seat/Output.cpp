@@ -39,6 +39,10 @@ void Output::initializeGL()
     blackout = std::make_unique<ResizeBlackout>(*this);
     initLayers();
     m_lastRect = rect();
+
+    // Enabled by an output configuration: black with the others until its desktop appears
+    if (ResizeBlackout::GroupActive())
+        blackout->joinGroup();
 }
 
 void Output::paintGL()

@@ -34,8 +34,12 @@
 #include <Effects/SurfaceBlurManager.h>
 #include <Effects/MinimizeAnimation.h>
 #include <Effects/FullscreenAnimation.h>
+#include <Core/OutputConfig.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Core/SoundSettings.h>
+#include <Core/Attention.h>
+#include <Core/ShellBus.h>
 
 #include <RResourceTracker.h>
 
@@ -59,7 +63,11 @@ void Crystals::initialized() noexcept
     initColorScheme();
     SSD::WarmUp(); // Not when the first decorated window appears (the font lookup stalls)
     GetSeat()->configureInputDevices();
-    LCompositor::initialized();
+    // Like LCompositor::initialized(), but the outputs as saved (see OutputConfig)
+    loadCursorShapes();
+    OutputConfig::InitializeOutputs();
+    SoundSettings::PlayStartup();
+    ShellBus::Init();
 
     if ((heaven = HNCompositor::GetOrMake()))
     {
@@ -237,6 +245,7 @@ void Crystals::activateDesk() noexcept
 void Crystals::uninitialized() noexcept
 {
     Volume::Clear();
+    ShellBus::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
     Expose::Clear();
@@ -266,6 +275,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new Seat(params);
     case LFactoryObject::Type::LPointer:
         return new Pointer(params);
+    case LFactoryObject::Type::LActivationTokenManager:
+        return new ActivationTokenManager(params);
     case LFactoryObject::Type::LKeyboard:
         return new Keyboard(params);
     case LFactoryObject::Type::LBackgroundBlur:

@@ -3,6 +3,7 @@
 #include <Roles/Surface.h>
 #include <Scene/Scene.h>
 #include <Effects/Snapshot.h>
+#include <Effects/SurfaceBlurManager.h>
 #include <Core/Workspaces.h>
 #include <Decorations/SSDTheme.h>
 #include <Decorations/SSD.h>
@@ -116,8 +117,8 @@ void FullscreenAnimation::StateApplied(ToplevelRole &toplevel) noexcept
 void FullscreenAnimation::ProcessPending() noexcept
 {
     for (auto &a : Animations())
-        if (a->m_applied && !a->m_finished && (!a->m_hasNew || a->treeDamage() != a->m_newDamage))
-            a->bakeNew(); // First, or new content (live)
+        if (a->m_applied && !a->m_finished && (!a->m_hasNew || a->treeDamage() != a->m_newDamage || a->blurState() != a->m_newBlurState))
+            a->bakeNew(); // First, new content (live) or its blur changed
 }
 
 bool FullscreenAnimation::HidesSurface(const LSurface *surface) noexcept
@@ -145,6 +146,7 @@ FullscreenAnimation::FullscreenAnimation(ToplevelRole &toplevel, bool entering, 
     m_toplevel(&toplevel),
     m_surface(toplevel.surface()),
     m_entering(entering),
+    m_output(output),
     m_anim(TimeoutMs, [this](CZAnimation*){ update(); }, [this](CZAnimation*){ finish(); })
 {
     m_scale = std::max(1, Int32(std::ceil(output->scale())));
@@ -160,6 +162,10 @@ FullscreenAnimation::FullscreenAnimation(ToplevelRole &toplevel, bool entering, 
         const SkIRect &prev { toplevel.prevRect };
         m_target = prev.isEmpty() ? m_from : SkRect::Make(SkIRect::MakeXYWH(prev.x(), prev.y(), prev.width(), prev.height() + titlebar));
     }
+
+    // Its blur as last shown, before it's hidden (it isn't regenerated meanwhile) and before
+    // snapshotting it (which moves its view around): drawn under the new frames
+    m_blur = Snapshot::CaptureBlur(*static_cast<Surface*>(toplevel.surface()), m_scale);
 
     auto image { Snapshot::Toplevel(toplevel, m_scale, m_oldMargins) };
 
@@ -316,11 +322,48 @@ void FullscreenAnimation::finish() noexcept
     m_new.setVisible(false);
     m_old.setImage(nullptr);
     m_new.setImage(nullptr);
+    m_blur = {};
+    m_backdrop = {};
 
     if (m_toplevel)
         static_cast<Surface*>(m_toplevel->surface())->view.syncVisibility();
 
     compositor()->repaintAllOutputs();
+}
+
+UInt64 FullscreenAnimation::blurState() const noexcept
+{
+    if (!m_toplevel)
+        return 0;
+
+    const auto *blur { static_cast<const SurfaceBlurManager*>(m_toplevel->surface()->backgroundBlur()) };
+
+    if (!blur || !blur->visible())
+        return 0;
+
+    // Its area (as the client set it: see Snapshot::View()) and shape
+    const auto &fx { blur->fx };
+    const SkIRect area { fx.areaType() == AKBackgroundBlurEffect::Region ? fx.region().getBounds() : SkIRect::MakeSize(m_toplevel->surface()->size()) };
+    UInt64 h { 1469598103934665603ULL };
+    const auto mix = [&h](Int64 v){ h = (h ^ UInt64(v)) * 1099511628211ULL; };
+    mix(area.x()); mix(area.y()); mix(area.width()); mix(area.height());
+    mix(fx.areaType() == AKBackgroundBlurEffect::Region ? fx.region().computeRegionComplexity() : 0);
+    mix(Int64(fx.clipType()));
+
+    if (fx.clipType() == AKBackgroundBlurEffect::RoundRect)
+    {
+        const CZRRect &r { fx.roundRectClip() };
+        mix(r.x()); mix(r.y()); mix(r.width()); mix(r.height());
+        mix(Int64(r.fRadTL)); mix(Int64(r.fRadTR)); mix(Int64(r.fRadBR)); mix(Int64(r.fRadBL));
+    }
+    else if (fx.clipType() == AKBackgroundBlurEffect::Path)
+    {
+        const SkRect b { fx.pathClip().getBounds() };
+        mix(Int64(b.x())); mix(Int64(b.y())); mix(Int64(b.width())); mix(Int64(b.height()));
+        mix(fx.pathClip().countPoints());
+    }
+
+    return h;
 }
 
 UInt64 FullscreenAnimation::treeDamage() const noexcept
@@ -348,12 +391,25 @@ void FullscreenAnimation::bakeNew() noexcept
         return;
 
     const UInt64 damage { treeDamage() };
-    auto image { Snapshot::Toplevel(*m_toplevel.get(), m_scale, m_newMargins) };
+    const UInt64 blurSt { blurState() };
+    // Its blurred background where it lands (again if its size changed), else the last one
+    const SkISize size { m_toplevel->surface()->size() };
+    const bool outputExists { std::find(compositor()->outputs().begin(), compositor()->outputs().end(), m_output) != compositor()->outputs().end() };
+
+    if (outputExists && (size != m_backdropSize || !m_backdrop.image))
+    {
+        m_backdrop = Snapshot::Backdrop(*m_toplevel.get(), m_output, m_scale);
+        m_backdropSize = size;
+    }
+
+    const Snapshot::Blur *under { m_backdrop.image ? &m_backdrop : m_blur.image ? &m_blur : nullptr };
+    auto image { Snapshot::Toplevel(*m_toplevel.get(), m_scale, m_newMargins, under) };
 
     if (!image)
         return;
 
     m_newDamage = damage;
+    m_newBlurState = blurSt;
     m_new.setImage(image);
 
     // Refreshed (live): same dissolve

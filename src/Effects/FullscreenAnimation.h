@@ -6,6 +6,7 @@
 #include <Core/CZWeak.h>
 #include <Core/CZLinearAnimation.h>
 #include <AK/Nodes/AKImage.h>
+#include <Effects/Snapshot.h>
 #include <memory>
 
 /**
@@ -30,8 +31,14 @@
  * the animation): see slideDeviation().
  *
  * The new frame stays live: it's snapshotted again whenever the window (or a subsurface) commits
- * new content, so e.g. a video keeps playing during the animation. The window itself is hidden
+ * new content or its blur changes (e.g. its area for the new size, which may come in a later commit), so e.g. a video keeps playing during the animation. The window itself is hidden
  * meanwhile (keeping receiving frame callbacks, see WantsFrames()) and shown when it ends.
+ *
+ * Translucent parts keep their blurred background (the window being hidden, its blur isn't
+ * regenerated meanwhile): under every new frame, its blurred background precalculated where it
+ * lands (what will be behind it there, blurred with its material, see Snapshot::Backdrop()), or
+ * else its blur as last generated (captured when the animation begins) stretched over its new blur
+ * region. As each frame carries its background, it's interpolated and dissolved along with them.
  *
  * Snapshots are baked on the main thread (see Snapshot).
  */
@@ -81,6 +88,7 @@ private:
     void finish() noexcept;
     void bakeNew() noexcept;
     UInt64 treeDamage() const noexcept; // Changes whenever the window or a subsurface commits new content
+    UInt64 blurState() const noexcept;  // Changes whenever its blur is shown/hidden, or its area or shape changes
     SkRect targetRect() const noexcept;
     SkScalar slideDeviation(SkScalar t) noexcept;
     void place(AKImage &node, const SkRect &window, const SkIRect &margins) noexcept;
@@ -94,6 +102,7 @@ private:
     Int64 m_newMs { 0 };        // When (animation time)
     Float64 m_newProgress { 0 };// The movement's progress then
     UInt64 m_newDamage { 0 };   // treeDamage() when the new frame was last snapshotted
+    UInt64 m_newBlurState { 0 };// blurState() then (the client may send its new blur area in a later commit)
     bool m_hasSlideStart { false };
     bool m_slideDisturbed { false }; // The world moved otherwise (see slideDeviation())
     SkScalar m_slideStart { 0.f }; // The destination workspace's slideX() at t = 0 (see slideDeviation())
@@ -104,6 +113,10 @@ private:
     AKImage m_old;
     AKImage m_new;
     SkIRect m_oldMargins {}, m_newMargins {}; // Shadow room around the window in each image (LTRB)
+    Snapshot::Blur m_blur;      // Its blurred background when it began (see the class description)
+    Snapshot::Blur m_backdrop;  // Precalculated where it lands, for m_backdropSize
+    SkISize m_backdropSize {};
+    LOutput *m_output;
     CZLinearAnimation m_anim;
 };
 

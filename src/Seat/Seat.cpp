@@ -23,6 +23,7 @@
 
 #include <Roles/Surface.h>
 #include <Core/SoundSettings.h>
+#include <Core/KeyboardSettings.h>
 
 #include <libinput.h>
 
@@ -169,6 +170,7 @@ bool Seat::configureOutputsRequest(LClient *client, const std::vector<OutputConf
 
 void Seat::inputEvent(const CZInputEvent &e) noexcept
 {
+    KeyboardSettings::Activity(); // The keyboard backlight back on (if turned off after inactivity)
     LSeat::inputEvent(e);
 }
 

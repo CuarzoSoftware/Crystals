@@ -40,6 +40,7 @@
 #include <Core/SoundSettings.h>
 #include <Core/Attention.h>
 #include <Core/ShellBus.h>
+#include <Core/KeyboardSettings.h>
 
 #include <RResourceTracker.h>
 
@@ -68,6 +69,7 @@ void Crystals::initialized() noexcept
     OutputConfig::InitializeOutputs();
     SoundSettings::PlayStartup();
     ShellBus::Init();
+    KeyboardSettings::Init();
 
     if ((heaven = HNCompositor::GetOrMake()))
     {
@@ -246,6 +248,7 @@ void Crystals::uninitialized() noexcept
 {
     Volume::Clear();
     ShellBus::Clear();
+    KeyboardSettings::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
     Expose::Clear();

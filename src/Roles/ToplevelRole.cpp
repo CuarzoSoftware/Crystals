@@ -221,7 +221,12 @@ void ToplevelRole::keepReachable(LOutput *output) noexcept
         return;
     }
 
-    const SkISize size { windowGeometry().size() };
+    // The size it's about to have if a configuration is on its way (e.g. leaving fullscreen while the
+    // top bar comes back: its current size is still the fullscreen one, fitting that would replace
+    // the size it's being restored to)
+    const auto &pending { pendingConfiguration() };
+    const bool awaiting { pending.serial != serial() && !pending.size.isEmpty() };
+    const SkISize size { awaiting ? pending.size : windowGeometry().size() };
 
     if (size.isEmpty() || avail.isEmpty())
         return;
@@ -277,6 +282,55 @@ void ToplevelRole::leaveFullscreen(bool animated) noexcept
     LToplevelRole::unsetFullscreenRequest();
     configureMaximizedSize();
     Workspaces::Sync(*this); // Back to the desktop
+}
+
+void ToplevelRole::restoredFromFullscreen() noexcept
+{
+    LSurface *surf { surface() };
+
+    // Dragged meanwhile: where the user takes it
+    if (!surf || isFullscreen() || isMaximized() || moveSession().isActive())
+    {
+        m_restoringFromFullscreen = false;
+        return;
+    }
+
+    // The output it returns to: the one its previous rect is on (Louvre already cleared the
+    // exclusive output; the cursor may be on another one)
+    LOutput *output { nullptr };
+    Int64 best { 0 };
+
+    for (LOutput *o : compositor()->outputs())
+    {
+        SkIRect area;
+
+        if (area.intersect(o->rect(), prevRect) && Int64(area.width()) * area.height() > best)
+        {
+            best = Int64(area.width()) * area.height();
+            output = o;
+        }
+    }
+
+    if (!output)
+        output = cursor()->output();
+
+    // Still at its fullscreen size (the state applied before its new size): at prevRect for now,
+    // made reachable once it has the size asked for
+    const SkISize size { windowGeometry().size() };
+
+    if (output && size.width() >= output->size().width() && size.height() >= output->size().height() &&
+        !(prevRect.width() >= output->size().width() && prevRect.height() >= output->size().height()))
+    {
+        surf->setPos(prevRect.topLeft());
+        return;
+    }
+
+    m_restoringFromFullscreen = false;
+    surf->setPos(prevRect.topLeft());
+
+    // Its own size if it kept another one: reachable anyway
+    if (output)
+        keepReachable(output);
 }
 
 void ToplevelRole::fitIfYoung() noexcept
@@ -443,11 +497,17 @@ void ToplevelRole::stateChanged(CZBitset<Changes> changes, const State &prev)
         Expose::WindowsChanged(); // Into/out of the desktop's layout
         static_cast<Surface*>(surface())->view.syncOpaqueRegion(); // Fully opaque while fullscreen
 
-        // Out of fullscreen: reachable, even if the client kept another size (see leaveFullscreen())
+        // Out of fullscreen: back where it was (see restoredFromFullscreen())
         if (!isFullscreen())
-            if (LOutput *output { exclusiveOutput() ? exclusiveOutput() : cursor()->output() })
-                keepReachable(output);
+        {
+            m_restoringFromFullscreen = true;
+            restoredFromFullscreen();
+        }
+        else
+            m_restoringFromFullscreen = false;
     }
+    else if (m_restoringFromFullscreen && changes.has(WindowGeometryChanged))
+        restoredFromFullscreen();
 
     Workspaces::Sync(*this);
 

@@ -99,6 +99,14 @@ private:
     UInt32 m_fitAttempts { 0 };
     bool m_fitPending { false }; // Configured to fit: place it again once the new size arrives
     void enforceMinSize() noexcept;
+
+    /**
+     * Out of fullscreen: back at prevRect (see leaveFullscreen()), kept reachable on the output it
+     * returned to once the client has its new size (it may first commit the state at its old,
+     * fullscreen size; fitting that would push it to the corner and shrink it).
+     */
+    void restoredFromFullscreen() noexcept;
+    bool m_restoringFromFullscreen { false };
     bool m_minSizeRequested { false };
     std::unique_ptr<SSD> m_ssd;
 };

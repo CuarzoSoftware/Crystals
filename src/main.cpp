@@ -23,16 +23,8 @@ int main(void)
     setenv("CZ_LOUVRE_ENABLE_LIBSEAT",   "1", 0);
     setenv("CZ_SRM_BUFFERING",           "3", 0); // Triple buffering (render the next frame while a page flip is pending)
 
-    setenv("CZ_FIRMAMENT_LOG_LEVEL",         "6", 0);
-    setenv("CZ_HEAVEN_BAR_LOG_LEVEL",        "6", 0);
-    setenv("CZ_HEAVEN_CLIENT_LOG_LEVEL",     "6", 0);
-    setenv("CZ_HEAVEN_COMPOSITOR_LOG_LEVEL", "6", 0);
-    setenv("CZ_CRYSTALS_LOG_LEVEL",          "6", 0);
-    setenv("CZ_LOUVRE_LOG_LEVEL",            "6", 0);
-    setenv("CZ_SRM_LOG_LEVEL",           "6", 0);
-    setenv("CZ_REAM_LOG_LEVEL",          "6", 0);
-    setenv("CZ_KAY_LOG_LEVEL",           "6", 0);
-    setenv("CZ_CORE_LOG_LEVEL",          "6", 0);
+    // Logs: errors only by default (see CZLogger), more with each project's *_LOG_LEVEL (0-6), e.g.
+    // CZ_CRYSTALS_LOG_LEVEL=4 for info. Launched apps inherit them.
 
     LLauncher::startDaemon();
 

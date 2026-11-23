@@ -19,6 +19,7 @@
 #include <Roles/Surface.h>
 #include <Roles/SubsurfaceRole.h>
 #include <Roles/ToplevelRole.h>
+#include <Roles/PopupRole.h>
 #include <Roles/LayerRole.h>
 #include <Decorations/SSDTheme.h>
 #include <Decorations/SSD.h>
@@ -270,6 +271,8 @@ LFactoryObject *Crystals::createObjectRequest(LFactoryObject::Type objectType, c
         return new SubsurfaceRole(params);
     case LFactoryObject::Type::LToplevelRole:
         return new ToplevelRole(params);
+    case LFactoryObject::Type::LPopupRole:
+        return new PopupRole(params);
     case LFactoryObject::Type::LLayerRole:
         return new LayerRole(params);
     case LFactoryObject::Type::LOutput:

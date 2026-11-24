@@ -185,8 +185,13 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
     {
         LSurface *clicked { focus()->parent() ? focus()->topmostParent() : focus() };
 
+        // What Louvre gave the keyboard to (subsurfaces never get it, their closest ancestor does)
+        LSurface *focused { focus() };
+        while (focused->subsurface() && focused->parent())
+            focused = focused->parent();
+
         if (clicked->layerRole() && clicked->layerRole()->keyboardInteractivity() == LLayerRole::NoInteractivity &&
-            seat()->keyboard()->focus() == focus() && !seat()->keyboard()->grab())
+            seat()->keyboard()->focus() == focused && !seat()->keyboard()->grab())
             seat()->keyboard()->setFocus(seat()->activeToplevel() ? seat()->activeToplevel()->surface() : nullptr);
     }
 

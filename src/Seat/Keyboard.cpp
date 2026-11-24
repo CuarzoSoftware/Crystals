@@ -12,6 +12,7 @@
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
 #include <Core/SessionLock.h>
+#include <Core/Screenshot.h>
 
 void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
 {
@@ -25,6 +26,10 @@ void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
         LKeyboard::keyEvent(e);
         return;
     }
+
+    // Print Screen, Super+Shift+3: screenshot to the desktop folder
+    if (Screenshot::KeyEvent(e))
+        return;
 
     // Ctrl+Super+Up/Down (Exposé), Escape while it's shown, Ctrl+Super+Left/Right (workspaces):
     // never sent to clients

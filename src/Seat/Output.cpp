@@ -16,6 +16,7 @@
 #include <Effects/Expose.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/SessionLock.h>
+#include <Core/Screenshot.h>
 #include <Core/CZLinearAnimation.h>
 #include <Core/CZEase.h>
 
@@ -94,6 +95,9 @@ void Output::paintGL()
     target->inDamage = &softwareCursorDamage();
     GetScene()->scene->render(target);
     Workspaces::EndRender();
+
+    // Requested (see Screenshot::Take()): this frame as shown, without the cursor
+    Screenshot::Capture(*this);
 
     handleSurfaceCallbacks();
     updateCapturedBlurs();

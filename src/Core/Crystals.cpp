@@ -52,8 +52,11 @@ Crystals::Crystals() noexcept
 
 void Crystals::initialized() noexcept
 {
+    // Animations advance only with frames (Output::paintGL()), no timer: everything animated here
+    // repaints, so frames keep coming while they run. Without frames (screens off, another VT) they
+    // wait, and jump to where they should be on the next one.
     auto core { CZCore::Get() };
-    core->setAnimationInterval(64);
+    core->setAnimationInterval(0);
 
     // Kay's theme assets (SSD) through the AssetBroker, but drawn here: the compositor never waits
     // for another process (requests to the service are synchronous, and would run with the

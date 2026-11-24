@@ -11,6 +11,8 @@
  * - AppAttention(s app id): the app's dock icon bounces (see Attention). The dock isn't shown for it.
  * - FullscreenChanged(b fullscreen, s output name): whether that output shows a fullscreen window's
  *   workspace (its dock auto-hides there, even if auto-hide is disabled).
+ * - WorkspaceChanged(s output name, u index): that output switched to another workspace (e.g.
+ *   Gazette hides its notification center).
  *
  * Shelf emits, on /org/cuarzo/Shelf (interface org.cuarzo.Shelf):
  * - AppLaunched(s app id): the user launched it from the dock: its first window is shown wherever
@@ -26,6 +28,7 @@ public:
 
     static void EmitAppAttention(const std::string &appId) noexcept;
     static void EmitFullscreenChanged(bool fullscreen, const std::string &output) noexcept;
+    static void EmitWorkspaceChanged(const std::string &output, UInt32 index) noexcept;
 };
 
 #endif // SHELLBUS_H

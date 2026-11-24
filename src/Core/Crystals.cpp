@@ -160,6 +160,27 @@ bool Crystals::IsShell(LSurface *surface) noexcept
     return false;
 }
 
+bool Crystals::IsNotifications(LSurface *surface) noexcept
+{
+    if (!surface)
+        return false;
+
+    if (surface->parent())
+        surface = surface->topmostParent();
+
+    return surface->layerRole() && surface->layerRole()->scope().starts_with(NotificationsScopePrefix);
+}
+
+bool Crystals::NotificationCenterShownOn(const LOutput *output) noexcept
+{
+    for (LSurface *s : compositor()->surfaces())
+        if (!s->parent() && s->mapped() && s->layerRole() && s->layerRole()->scope() == "cz-gazette-center" &&
+            s->layerRole()->exclusiveOutput() == output)
+            return true;
+
+    return false;
+}
+
 void Crystals::restack() noexcept
 {
     // raise() calls Surface::raised(), which calls this again
@@ -199,6 +220,7 @@ void Crystals::restack() noexcept
 
     // The shell above the rest of the overlay layer, the rest of the background layer above the desktop
     raiseAll(LLayerOverlay, [](LSurface *s){ return IsShell(s); });
+    raiseAll(LLayerOverlay, [](LSurface *s){ return IsNotifications(s); }); // Above the shell (and Exposé)
     raiseAll(LLayerBackground, [](LSurface *s){ return !IsDesk(s); });
 
     m_restacking = false;

@@ -42,6 +42,7 @@ int main(void)
     LLauncher::launch("cz-firmament");
     LLauncher::launch("cz-shelf");
     LLauncher::launch("cz-desk");
+    LLauncher::launch("cz-gazette"); // Notifications (optional, see the Cuarzo Framework's with_gazette)
 
     while (compositor.state() != LCompositor::Uninitialized)
         compositor.dispatch(-1);

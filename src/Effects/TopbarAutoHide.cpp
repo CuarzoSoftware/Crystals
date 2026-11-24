@@ -1,3 +1,4 @@
+#include <Core/Crystals.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
@@ -232,6 +233,14 @@ void TopbarAutoHide::update() noexcept
     if (!fullscreen)
     {
         m_revealTimer.stop();
+        return;
+    }
+
+    // The notification center is open (opened from the bar): the bars and the title bar stay
+    if (Crystals::NotificationCenterShownOn(&m_output))
+    {
+        m_revealTimer.stop();
+        setShown(true);
         return;
     }
 

@@ -34,6 +34,15 @@ public:
     /// Whether @p surface is (part of) a shell panel (a dock, the top bar).
     static bool IsShell(LSurface *surface) noexcept;
 
+    /// Layer surface scopes of Gazette (notification banners and center): above the shell and Exposé.
+    static constexpr const char *NotificationsScopePrefix { "cz-gazette" };
+
+    /// Whether @p surface is (part of) Gazette's banners or notification center.
+    static bool IsNotifications(LSurface *surface) noexcept;
+
+    /// Whether Gazette's notification center is shown on @p output.
+    static bool NotificationCenterShownOn(const LOutput *output) noexcept;
+
     /**
      * @brief Keeps Louvre's stacking (used for input) like the scene's: the shell panels at the top
      *        of the overlay layer, the desktop at the bottom of the background layer.

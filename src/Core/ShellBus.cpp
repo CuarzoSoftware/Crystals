@@ -64,3 +64,12 @@ void ShellBus::EmitFullscreenChanged(bool fullscreen, const std::string &output)
     sd_bus_emit_signal(s_bus->bus(), "/org/cuarzo/Crystals", "org.cuarzo.Crystals", "FullscreenChanged", "bs", int(fullscreen), output.c_str());
     sd_bus_flush(s_bus->bus());
 }
+
+void ShellBus::EmitWorkspaceChanged(const std::string &output, UInt32 index) noexcept
+{
+    if (!s_bus)
+        return;
+
+    sd_bus_emit_signal(s_bus->bus(), "/org/cuarzo/Crystals", "org.cuarzo.Crystals", "WorkspaceChanged", "su", output.c_str(), index);
+    sd_bus_flush(s_bus->bus());
+}

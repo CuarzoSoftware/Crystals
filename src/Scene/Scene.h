@@ -60,6 +60,7 @@ public:
     AKContainer shell;
     AKContainer expose;
     AKContainer docks;
+    AKContainer notifications; ///< Gazette's banners and notification center (above Exposé and the docks)
     AKContainer popups;
     AKContainer top;
     AKContainer blackouts;

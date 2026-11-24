@@ -1242,6 +1242,10 @@ static bool OverDock(const SkPoint &pos) noexcept
 {
     LSurface *s { seat()->surfaceAt(SkIPoint::Make(Int32(std::floor(pos.x())), Int32(std::floor(pos.y())))) };
 
+    // Gazette's banners too (above Exposé)
+    if (s && Crystals::IsNotifications(s))
+        return true;
+
     if (!s || !Crystals::IsShell(s))
         return false;
 

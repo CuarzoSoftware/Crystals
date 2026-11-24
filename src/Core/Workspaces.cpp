@@ -403,6 +403,7 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
     {
         activateCurrent();
         TopbarAutoHide::UpdateAll();
+        ShellBus::EmitWorkspaceChanged(m_output.name(), UInt32(m_current));
     }
 
     notifyFullscreen();
@@ -426,6 +427,7 @@ void Workspaces::switchTo(Int64 index, ToplevelRole *toplevel) noexcept
     {
         activateCurrent(toplevel);
         TopbarAutoHide::UpdateAll();
+        ShellBus::EmitWorkspaceChanged(m_output.name(), UInt32(m_current));
     }
 
     notifyFullscreen();
@@ -459,6 +461,7 @@ void Workspaces::jumpTo(Int64 index, bool show) noexcept
     {
         activateCurrent();
         TopbarAutoHide::UpdateAll();
+        ShellBus::EmitWorkspaceChanged(m_output.name(), UInt32(m_current));
     }
 
     notifyFullscreen();

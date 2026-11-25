@@ -242,6 +242,7 @@ Workspaces::Space &Workspaces::insert(size_t index, ToplevelRole *toplevel) noex
         auto image { std::make_unique<AKImage>(&GetScene()->backdrops) };
         space->deskImage = image.get();
         image->enableAutoDamage(true);
+        image->setOpaque(true); // Desk is always opaque: what's behind isn't painted
         space->backdrop = std::move(image);
 
         if (m_lastDesktopId == 0)

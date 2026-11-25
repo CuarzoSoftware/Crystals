@@ -27,6 +27,12 @@ public:
     /// Starts the animation for a toplevel that was just (un)minimized, replacing any running one.
     static void Start(LToplevelRole &toplevel, bool minimizing) noexcept;
 
+    /**
+     * @brief Shows a toplevel growing from @p source (global coordinates), like when it's
+     *        unminimized but from there instead of the dock (e.g. a desktop icon, see OpenFromIcon).
+     */
+    static void StartFrom(LToplevelRole &toplevel, const SkRect &source) noexcept;
+
     /// Bakes pending snapshots and drops finished animations. Called from Output::paintGL() (the
     /// rendering thread) before the scene is rendered.
     static void ProcessPending(Output &output) noexcept;
@@ -40,7 +46,7 @@ public:
     ~MinimizeAnimation();
 
 private:
-    MinimizeAnimation(LToplevelRole &toplevel, bool minimizing) noexcept;
+    MinimizeAnimation(LToplevelRole &toplevel, bool minimizing, const SkRect &source = SkRect::MakeEmpty()) noexcept;
     bool bake(Output &output) noexcept;
     void update(Float64 t) noexcept;
     SkRect windowRect() const noexcept;
@@ -53,6 +59,7 @@ private:
     bool m_finished { false };
     SkRect m_window {};     // Captured when it starts
     SkRect m_lastDock {};   // Last known dock rect (kept if the dock goes away)
+    SkRect m_source {};     // Fixed rect it grows from instead of the dock's (see StartFrom())
     const LOutput *m_dockOutput { nullptr }; // Where the cursor was when it started: that screen's dock
     SkIRect m_margins {};   // The decorations' shadow around the window in the image (LTRB)
     AKImage m_node;

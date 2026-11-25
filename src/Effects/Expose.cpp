@@ -191,12 +191,45 @@ static LSurface *DeskOf(const LOutput *output) noexcept
     return nullptr;
 }
 
+void Expose::UpdateRects(Window &w) noexcept
+{
+    if (!w.toplevel)
+        return;
+
+    ToplevelRole &toplevel { *w.toplevel.get() };
+    const SkRect prevFrom { w.from }, prevGeometry { w.geometry };
+    w.from = WindowRect(toplevel);
+
+    // The window itself: its title bar and content (server-side), or its geometry (the
+    // client's decorations, without their shadows)
+    const SkIRect &geo { toplevel.windowGeometry() };
+
+    if (toplevel.titlebarHeight() > 0 || geo.isEmpty())
+        w.geometry = SkRect::MakeWH(w.from.width(), w.from.height());
+    else
+        w.geometry = SkRect::Make(geo);
+
+    // Changed while shown (e.g. a client's shadow grows when it's activated, moving its geometry
+    // within the surface): the window keeps its place in its slot, only the area around it changes.
+    // Otherwise it'd fly back to where its surface was, then jump to where it is.
+    if (prevFrom.isEmpty() || w.slot.isEmpty() || (prevFrom == w.from && prevGeometry == w.geometry))
+        return;
+
+    const SkScalar scale { w.slot.width() / std::max(1.f, prevFrom.width()) };
+    const SkPoint window { w.slot.x() + prevGeometry.x() * scale, w.slot.y() + prevGeometry.y() * scale };
+    w.slot = SkRect::MakeXYWH(window.x() - w.geometry.x() * scale, window.y() - w.geometry.y() * scale,
+                              w.from.width() * scale, w.from.height() * scale);
+}
+
 void Expose::snapshot(Window &w) noexcept
 {
     w.dirty = false;
 
     if (!w.toplevel || !w.output)
         return;
+
+    // It drew: maybe with another geometry (see UpdateRects())
+    UpdateRects(w);
 
     const Int32 scale { std::max(1, Int32(std::ceil(w.output->scale()))) };
     auto image { Snapshot::Toplevel(*w.toplevel.get(), scale, w.margins) };
@@ -273,17 +306,7 @@ void Expose::build() noexcept
             w->workspace = index;
             // The desktop's windows are laid out; fullscreen workspaces are shown as they are
             w->laidOut = ws->isDesktop(index);
-            w->from = WindowRect(*toplevel);
-
-            // The window itself: its title bar and content (server-side), or its geometry (the
-            // client's decorations, without their shadows)
-            const SkIRect &geo { toplevel->windowGeometry() };
-            const Int32 titlebar { toplevel->titlebarHeight() };
-
-            if (titlebar > 0 || geo.isEmpty())
-                w->geometry = SkRect::MakeWH(w->from.width(), w->from.height());
-            else
-                w->geometry = SkRect::Make(geo);
+            UpdateRects(*w);
 
             const SkRegion empty;
 
@@ -558,6 +581,7 @@ void Expose::layoutScreen(Screen &screen) noexcept
         }
 
         const bool isDesktop { ws && ws->isDesktop(i) };
+        thumb->desktop.setOpaque(true); // Desk is always opaque: the thumbnail's fill isn't painted under it
         thumb->desktop.setImage(isDesktop ? desktop : nullptr);
         thumb->desktop.setVisible(isDesktop && desktop);
         thumb->topbar.setInputRegion(&empty);
@@ -608,6 +632,7 @@ void Expose::layoutScreen(Screen &screen) noexcept
     screen.peekDesktop.layout().setWidthPercent(100.f);
     screen.peekDesktop.layout().setHeightPercent(100.f);
     screen.peekDesktop.setImage(desktop);
+    screen.peekDesktop.setOpaque(true);
 
     screen.plusShadow.setInputRegion(&empty);
     screen.plusShadow.setImage(CloseShadowImage(m_closeShadows, std::max(1, Int32(std::ceil(output.scale())))));

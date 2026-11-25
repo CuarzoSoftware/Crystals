@@ -186,6 +186,9 @@ private:
         AKImage thumb;            // In its workspace's thumbnail
     };
 
+    /// Its rects (from, geometry) as the window is now, its slot following (see Window).
+    static void UpdateRects(Window &w) noexcept;
+
     struct Thumb
     {
         size_t workspace { 0 };

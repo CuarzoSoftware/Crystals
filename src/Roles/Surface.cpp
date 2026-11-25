@@ -3,6 +3,7 @@
 #include <Core/Crystals.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Roles/Surface.h>
+#include <Effects/OpenFromIcon.h>
 #include <Scene/Scene.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
@@ -96,6 +97,13 @@ void Surface::mappingChanged()
         if (mapped())
         {
             auto &role { *static_cast<ToplevelRole*>(toplevel()) };
+
+            // Desk's new windows may grow from the icon they were opened from
+            if (!role.mappedOnce)
+            {
+                role.mappedOnce = true;
+                OpenFromIcon::WindowMapped(role);
+            }
             const bool launched { Attention::ConsumeUserLaunch(role.appId()) };
 
             if (role.attentionPending)

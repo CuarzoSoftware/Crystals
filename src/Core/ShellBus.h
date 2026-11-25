@@ -5,7 +5,13 @@
 #include <string>
 
 /**
- * @brief Crystals ↔ Shelf (the dock), through the session bus.
+ * @brief Crystals ↔ Shelf (the dock) and Desk, through the session bus.
+ *
+ * Crystals owns org.cuarzo.Crystals, with a method on /org/cuarzo/Crystals (interface
+ * org.cuarzo.Crystals), only for Desk (the caller's process must be Desk's):
+ * - OpenFromIcon(s title, i x, i y, i width, i height): Desk is about to map a window with that title,
+ *   opened from the desktop icon at that rect (global coordinates). It grows from there (see
+ *   OpenFromIcon). Desk waits for the reply before mapping it.
  *
  * Crystals emits, on /org/cuarzo/Crystals (interface org.cuarzo.Crystals):
  * - AppAttention(s app id): the app's dock icon bounces (see Attention). The dock isn't shown for it.

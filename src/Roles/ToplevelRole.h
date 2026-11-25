@@ -31,6 +31,9 @@ public:
     /// Wants the user's attention once mapped (see Attention::Request())
     bool attentionPending { false };
 
+    /// Mapped at least once (see OpenFromIcon)
+    bool mappedOnce { false };
+
     /// Creates/destroys/re-lays out the decorations (mode, state or size changed).
     void updateDecorations() noexcept;
 

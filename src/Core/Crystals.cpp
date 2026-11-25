@@ -34,6 +34,7 @@
 
 #include <Effects/SurfaceBlurManager.h>
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/OpenFromIcon.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/OutputConfig.h>
 #include <Core/Workspaces.h>
@@ -277,6 +278,7 @@ void Crystals::uninitialized() noexcept
     KeyboardSettings::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
+    OpenFromIcon::Clear();
     Expose::Clear();
     FullscreenAnimation::Clear();
     Workspaces::Clear();

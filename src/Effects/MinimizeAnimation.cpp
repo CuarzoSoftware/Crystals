@@ -1,4 +1,5 @@
 #include <Effects/MinimizeAnimation.h>
+#include <Effects/Snapshot.h>
 #include <Louvre/Roles/LLayerRole.h>
 #include <Louvre/Cursor/LCursor.h>
 #include <Roles/Surface.h>
@@ -29,37 +30,9 @@ static std::list<std::unique_ptr<MinimizeAnimation>> &Animations() noexcept
     return list;
 }
 
-// Auxiliary scene used to bake toplevels offscreen.
-struct AuxScene
-{
-    AuxScene() noexcept
-    {
-        scene = AKScene::Make();
-        scene->setRoot(&root);
-        target = scene->makeTarget();
-        target->setClearColor(SK_ColorTRANSPARENT);
-    }
-
-    std::shared_ptr<AKScene> scene;
-    AKContainer root { YGFlexDirectionColumn, false };
-    std::shared_ptr<AKTarget> target;
-};
-
-// Created on first use, destroyed by Clear() (while the main scene still exists).
-static std::unique_ptr<AuxScene> s_aux;
-
-static AuxScene &Aux() noexcept
-{
-    if (!s_aux)
-        s_aux = std::make_unique<AuxScene>();
-
-    return *s_aux;
-}
-
 void MinimizeAnimation::Clear() noexcept
 {
     Animations().clear();
-    s_aux.reset();
 }
 
 void MinimizeAnimation::Start(LToplevelRole &toplevel, bool minimizing) noexcept
@@ -67,6 +40,13 @@ void MinimizeAnimation::Start(LToplevelRole &toplevel, bool minimizing) noexcept
     auto &list { Animations() };
     list.remove_if([&toplevel](const auto &a){ return a->m_toplevel == &toplevel; });
     list.emplace_back(new MinimizeAnimation(toplevel, minimizing));
+}
+
+void MinimizeAnimation::StartFrom(LToplevelRole &toplevel, const SkRect &source) noexcept
+{
+    auto &list { Animations() };
+    list.remove_if([&toplevel](const auto &a){ return a->m_toplevel == &toplevel; });
+    list.emplace_back(new MinimizeAnimation(toplevel, false, source));
 }
 
 bool MinimizeAnimation::HidesSurface(const LSurface *surface) noexcept
@@ -100,10 +80,11 @@ void MinimizeAnimation::ProcessPending(Output &output) noexcept
     }
 }
 
-MinimizeAnimation::MinimizeAnimation(LToplevelRole &toplevel, bool minimizing) noexcept :
+MinimizeAnimation::MinimizeAnimation(LToplevelRole &toplevel, bool minimizing, const SkRect &source) noexcept :
     m_toplevel(&toplevel),
     m_surface(toplevel.surface()),
     m_minimizing(minimizing),
+    m_source(source),
     m_anim(DurationMs,
         [this](CZAnimation *a) { update(a->value()); },
         [this](CZAnimation *) {
@@ -194,6 +175,9 @@ static SkRect OnDockOf(LSurface &taskbar, const SkIRect &iconRect, const LOutput
 
 SkRect MinimizeAnimation::dockRect() const noexcept
 {
+    if (!m_source.isEmpty())
+        return m_source;
+
     if (m_toplevel)
     {
         for (const LForeignToplevelController *c : m_toplevel->foreignControllers())
@@ -230,78 +214,35 @@ bool MinimizeAnimation::bake(Output &output) noexcept
         return false;
 
     auto *surface { static_cast<Surface*>(m_toplevel->surface()) };
-    auto *toplevel { static_cast<ToplevelRole*>(m_toplevel.get()) };
-    const Int32 titlebar { toplevel->titlebarHeight() };
 
     if (surface->size().isEmpty() || !surface->image())
         return false;
 
-    // The decorations' shadow too (when shown, see SSD::update())
-    m_margins.setEmpty();
-    const SkISize min { SSD::MinSize() };
-
-    if (toplevel->ssd() && !toplevel->isFullscreen() &&
-        surface->size().width() >= min.width() && surface->size().height() >= min.height())
-    {
-        const auto sm { SSDTheme::Margins(toplevel->isActivated()) };
-        m_margins = SkIRect::MakeLTRB(sm.left, sm.top, sm.right, sm.bottom);
-    }
-
-    const SkISize size { surface->size().width() + m_margins.left() + m_margins.right(),
-                         surface->size().height() + titlebar + m_margins.top() + m_margins.bottom() };
-
-    auto &aux { Aux() };
-    SurfaceView &view { surface->view };
-
-    // Move the view (with its subsurfaces) into the aux scene at the origin. Child popups/toplevels
-    // are anchored to the main scene and aren't part of the window: leave them out.
-    AKNode *parent { view.parent() };
-    AKNode *next { view.next() };
-    const bool wasVisible { view.visible() };
-    const bool popupsVisible { view.popups.visible() };
-    const bool toplevelsVisible { view.toplevels.visible() };
-
-    view.popups.setVisible(false);
-    view.toplevels.setVisible(false);
-    view.setVisible(true);
-    view.setParent(&aux.root);
-    view.layout().setPosition(YGEdgeLeft, m_margins.left());
-    view.layout().setPosition(YGEdgeTop, titlebar + m_margins.top());
-
-    // The target is exactly the window (title bar + surface) and its shadow: the rest is clipped.
-    aux.root.layout().setWidth(size.width());
-    aux.root.layout().setHeight(size.height());
-
+    // The window as shown (title bar and shadow included), over its background blur. Minimizing: as
+    // last shown on screen (rendering the blur away from the screen would blur nothing and overwrite
+    // what it blurred there, which the dock's thumbnail of the window draws too, see Snapshot).
+    // Appearing (opened from an icon, unminimized): what will be behind it where it lands, blurred
+    // (a new window was never shown, and what's behind a minimized one may have changed).
+    auto &toplevel { *static_cast<ToplevelRole*>(m_toplevel.get()) };
     const Int32 scale { std::max(1, Int32(std::ceil(output.scale()))) };
-    auto image { RSurface::Make(size, scale, true) };
-    bool ok { false };
+    Snapshot::Blur backdrop;
 
-    if (image)
+    if (!m_minimizing)
     {
-        aux.target->surface = image;
-        aux.target->age = 0;
-        aux.target->setBakedNodesScale(scale);
-        ok = aux.scene->render(aux.target);
-        aux.target->surface.reset();
+        LOutput *destination { &output };
+
+        for (LOutput *o : compositor()->outputs())
+            if (SkIRect::Intersects(o->rect(), m_window.roundOut())) { destination = o; break; }
+
+        backdrop = Snapshot::Backdrop(toplevel, destination, scale);
     }
 
-    // Back where it was.
-    if (next && next->parent() == parent)
-        view.insertBefore(next);
-    else
-        view.setParent(parent);
+    auto image { Snapshot::Toplevel(toplevel, scale, m_margins, backdrop.image ? &backdrop : nullptr) };
 
-    view.popups.setVisible(popupsVisible);
-    view.toplevels.setVisible(toplevelsVisible);
-    view.setVisible(wasVisible);
-    view.layout().setPosition(YGEdgeLeft, view.surface.rolePos().x());
-    view.layout().setPosition(YGEdgeTop, view.surface.rolePos().y());
-    view.syncVisibility();
-
-    if (!ok || !image)
+    if (!image)
         return false;
 
-    m_node.setImage(image->image());
+    m_node.setImage(image);
     m_node.setVisible(true);
     return true;
 }

@@ -10,6 +10,7 @@
 #include <Core/Client.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
+#include <Louvre/Seat/LPointer.h>
 #include <Louvre/Roles/LSurface.h>
 #include <Louvre/Seat/LOutput.h>
 #include <Louvre/Cursor/LCursor.h>
@@ -462,7 +463,22 @@ void ToplevelRole::enforceMinSize() noexcept
 
 void ToplevelRole::minimizedChanged()
 {
-    LToplevelRole::minimizedChanged();
+    // Like Louvre's default, but minimized windows stay activated: they're drawn as they were (e.g.
+    // with their background blur) in their dock thumbnail. Restored without becoming the active
+    // window (e.g. another window was activated meanwhile), they're deactivated then.
+    if (isMinimized())
+    {
+        if (surface()->hasPointerFocus())
+            seat()->pointer()->setFocus(nullptr);
+
+        if (surface()->hasKeyboardFocus())
+            seat()->keyboard()->setFocus(nullptr);
+
+        moveSession().stop();
+        resizeSession().stop();
+    }
+    else if (pendingConfiguration().windowState.has(CZWinActivated) && seat()->activeToplevel() != this)
+        configureState(pendingConfiguration().windowState & ~CZWinActivated);
 
     auto *surf { static_cast<Surface*>(surface()) };
 

@@ -32,9 +32,9 @@ void SubsurfaceRole::placedBelow(LSurface *sibling) noexcept
     auto *surf { static_cast<Surface*>(surface()) };
     auto *sibl { static_cast<Surface*>(sibling) };
 
-    // Sibling is the parent => insert it at the end of parent->view.below
+    // Sibling is the parent => insert it at the end of parent->view.below (the topmost of them)
     if (sibl == surf->parent())
         surf->view.setParent(&sibl->view.below);
     else
-        surf->view.insertAfter(&sibl->view);
+        surf->view.insertBefore(&sibl->view); // Below it (Louvre notifies them from the top down)
 }

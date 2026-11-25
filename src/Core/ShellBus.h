@@ -24,6 +24,10 @@
  * - AppLaunched(s app id): the user launched it from the dock: its first window is shown wherever
  *   it opens (see Attention::UserLaunched()).
  * - Started(): Shelf (re)started: the current FullscreenChanged state is sent again.
+ *
+ * Desk emits, on /org/cuarzo/Desk (interface org.cuarzo.Desk):
+ * - AppLaunched(s app id): the user opened an app (or a file with it) from the desktop or a folder
+ *   window: like Shelf's (only Desk's own are taken).
  */
 class ShellBus
 {

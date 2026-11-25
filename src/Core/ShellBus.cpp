@@ -13,6 +13,7 @@
 static std::shared_ptr<CZBus> s_bus; // Kept: the connection closes with its last reference
 static sd_bus_slot *s_launchedMatch {};
 static sd_bus_slot *s_startedMatch {};
+static sd_bus_slot *s_deskLaunchedMatch {};
 static sd_bus_slot *s_object {};
 
 // Only Desk may announce its windows
@@ -76,6 +77,18 @@ void ShellBus::Init() noexcept
             return 0;
         }, nullptr, nullptr);
 
+    // Apps (or files with their apps) opened from Desk: the same
+    sd_bus_match_signal_async(s_bus->bus(), &s_deskLaunchedMatch, nullptr, "/org/cuarzo/Desk",
+        "org.cuarzo.Desk", "AppLaunched",
+        [](sd_bus_message *m, void *, sd_bus_error *) -> int {
+            const char *appId {};
+
+            if (SentByDesk(m) && sd_bus_message_read(m, "s", &appId) >= 0 && appId)
+                Attention::UserLaunched(appId);
+
+            return 0;
+        }, nullptr, nullptr);
+
     sd_bus_match_signal_async(s_bus->bus(), &s_startedMatch, nullptr, "/org/cuarzo/Shelf",
         "org.cuarzo.Shelf", "Started",
         [](sd_bus_message *, void *, sd_bus_error *) -> int {
@@ -100,6 +113,7 @@ void ShellBus::Clear() noexcept
     s_object = sd_bus_slot_unref(s_object);
     s_launchedMatch = sd_bus_slot_unref(s_launchedMatch);
     s_startedMatch = sd_bus_slot_unref(s_startedMatch);
+    s_deskLaunchedMatch = sd_bus_slot_unref(s_deskLaunchedMatch);
     s_bus.reset();
 }
 

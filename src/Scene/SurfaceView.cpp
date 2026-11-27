@@ -8,6 +8,7 @@
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Effects/SurfaceBlurManager.h>
 #include <Louvre/Roles/LPopupRole.h>
 #include <Decorations/SSDTheme.h>
@@ -263,7 +264,8 @@ bool SurfaceView::shown() const noexcept
         !TopbarAutoHide::HidesSurface(&surface) &&    // A top bar hidden by a fullscreen window
         !Workspaces::HidesSurface(&surface) &&        // Its workspace is out of view
         !FullscreenAnimation::HidesSurface(&surface) && // Entering/leaving fullscreen: the animation shows it
-        !Expose::HidesSurface(&surface);                // Shown through its snapshot
+        !Expose::HidesSurface(&surface) &&              // Shown through its snapshot
+        !ShowDesktop::HidesSurface(&surface);           // Aside, shown through its snapshot
 }
 
 void SurfaceView::syncVisibility() noexcept

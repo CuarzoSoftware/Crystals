@@ -7,6 +7,7 @@
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Core/Client.h>
 #include <Louvre/Seat/LSeat.h>
 #include <Louvre/Seat/LKeyboard.h>
@@ -62,8 +63,9 @@ Int32 ToplevelRole::pendingTitlebarHeight() const noexcept
 
 SkIPoint ToplevelRole::rolePos() const
 {
-    // Away while its workspace isn't shown (see Workspaces)
-    return LToplevelRole::rolePos() + SkIPoint::Make(0, titlebarHeight()) + Workspaces::ParkOffset(surface());
+    // Away while its workspace isn't shown (see Workspaces), or while the desktop is (see ShowDesktop)
+    return LToplevelRole::rolePos() + SkIPoint::Make(0, titlebarHeight()) + Workspaces::ParkOffset(surface()) +
+           ShowDesktop::ParkOffset(surface());
 }
 
 void ToplevelRole::configureAvailableBounds() noexcept
@@ -190,6 +192,9 @@ void ToplevelRole::activateRequest()
         Attention::Request(*this);
         return;
     }
+
+    // The windows moved aside come back
+    ShowDesktop::WindowActivated(this);
 
     // Exposé closes onto it, like when it's clicked there (it activates and raises it)
     if (!Expose::LeaveFor(*this))
@@ -489,6 +494,10 @@ void ToplevelRole::minimizedChanged()
     surf->view.syncVisibility();
     Workspaces::Sync(*this);
     Expose::WindowsChanged();
+
+    // Restored: the windows moved aside come back
+    if (!isMinimized())
+        ShowDesktop::WindowActivated(this);
     TopbarAutoHide::UpdateAll();
 }
 

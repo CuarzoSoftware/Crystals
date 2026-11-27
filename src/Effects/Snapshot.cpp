@@ -1,4 +1,5 @@
 #include <Effects/Snapshot.h>
+#include <Effects/ShowDesktop.h>
 #include <Roles/ToplevelRole.h>
 #include <Roles/Surface.h>
 #include <Decorations/SSD.h>
@@ -216,7 +217,7 @@ Snapshot::Blur Snapshot::Backdrop(ToplevelRole &toplevel, LOutput *output, Int32
 
     // Where it is with its workspace in view (the windows of a workspace not shown are moved away
     // together, see Workspaces::ParkOffset()). The blur reaches ~3 sigma beyond: captured too.
-    const auto unparked = [](const LSurface *s){ return s->rolePos() - Workspaces::ParkOffset(s); };
+    const auto unparked = [](const LSurface *s){ return s->rolePos() - Workspaces::ParkOffset(s) - ShowDesktop::ParkOffset(s); };
     const SkIPoint origin { unparked(surface) };
     const SkIRect rect { SkIRect::MakeXYWH(origin.x(), origin.y(), surface->size().width(), surface->size().height()) };
     const SkScalar sigma { blur->fx.blurRadius() };

@@ -16,6 +16,7 @@ A macOS-like desktop for Linux. Crystals is the Wayland compositor of Cuarzo OS,
 
 - **Blur Effects:** translucent windows, menus, the menu bar and the dock blur what's behind them, as clients request through the background blur protocol.
 - **Exposé/Workspaces:** see every window of the workspace at once, and move between workspaces. Use a three-finger swipe up or Ctrl+Super+Up to show the windows, and a sideways three-finger swipe or Ctrl+Super+Left/Right to change workspace. Fullscreen windows get a workspace of their own.
+- **Show Desktop:** move every window aside, faded and almost off the screen, to use the desktop. Use a three-finger swipe down or Super+D. Swipe up, press Super+D again, click a window, drag something over a window or change workspace to bring them back.
 - **Finger Swipe Gestures:** touchpad gestures follow the fingers and finish with springy animations.
 - **Desktop Icons:** files of the desktop folder and connected disks, with thumbnails, drag and drop and rubber band selection ([Desk](https://github.com/CuarzoSoftware/Desk)).
 - **Dock:** an auto-hiding dock with pinned and running apps, minimized windows, launch bounces and a trash ([Shelf](https://github.com/CuarzoSoftware/Shelf)).
@@ -44,6 +45,7 @@ Crystals also supports screen sharing ([xdg-desktop-portal-cz](https://github.co
 | --- | --- |
 | Ctrl+Super+Up/Down | Show/hide Exposé |
 | Ctrl+Super+Left/Right | Previous/next workspace |
+| Super+D | Show/hide the desktop |
 | Super+Space | Next keyboard layout (with several) |
 | Print Screen, Super+Shift+3 | Screenshot to the desktop |
 

@@ -8,9 +8,10 @@
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Effects/ResizeBlackout.h>
 
-void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); Expose::SurfaceDamaged(this); }
+void Surface::damageChanged()           { view.syncDamage(); view.syncImage(); TopbarAutoHide::SurfaceDamaged(this); Expose::SurfaceDamaged(this); ShowDesktop::SurfaceDamaged(this); }
 void Surface::opaqueRegionChanged()     { view.syncOpaqueRegion(); }
 void Surface::invisibleRegionChanged()  { view.syncInvisibleRegion(); }
 void Surface::inputRegionChanged()      { view.syncInputRegion(); }
@@ -105,6 +106,9 @@ void Surface::mappingChanged()
                 OpenFromIcon::WindowMapped(role);
             }
             const bool launched { Attention::ConsumeUserLaunch(role.appId()) };
+
+            // A window appeared: the windows moved aside come back
+            ShowDesktop::WindowActivated(&role);
 
             if (role.attentionPending)
             {

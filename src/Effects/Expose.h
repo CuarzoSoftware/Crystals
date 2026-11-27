@@ -167,6 +167,14 @@ public:
 
     static void Clear() noexcept;
 
+    /**
+     * @brief Closes it right away, without animating: the windows and the top bars shown again as
+     *        they are, the shell told it's gone (see notify()), then destroyed like Clear().
+     *
+     * E.g. the session is being left (see SessionState): nothing of it must be left half way.
+     */
+    static void Reset() noexcept;
+
     ~Expose();
 
 private:

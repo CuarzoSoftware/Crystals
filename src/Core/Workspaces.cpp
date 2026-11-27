@@ -8,6 +8,7 @@
 #include <Seat/Output.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Effects/Snapshot.h>
 #include <Louvre/LCompositor.h>
 #include <Louvre/Seat/LSeat.h>
@@ -79,6 +80,18 @@ void Workspaces::Clear() noexcept
 
     for (LOutput *output : seat()->outputs())
         static_cast<Output*>(output)->workspaces.reset();
+}
+
+void Workspaces::FinishAll() noexcept
+{
+    s_swiping = nullptr;
+
+    for (LOutput *output : compositor()->outputs())
+        if (Workspaces *ws { Existing(output) })
+        {
+            ws->m_swiping = false;
+            ws->showCurrent(); // Those left by their windows are removed too
+        }
 }
 
 /* ---------------------------------------- Membership ---------------------------------------- */
@@ -394,6 +407,7 @@ void Workspaces::switchTo(Int64 index, Float64 velocity, Float64 stiffness) noex
 
     if (changed)
     {
+        ShowDesktop::Leave(); // The windows moved aside come back
         seat()->dismissPopups();
         updateDeskImage(); // For the desktops it isn't drawn on while sliding
     }
@@ -418,6 +432,7 @@ void Workspaces::switchTo(Int64 index, ToplevelRole *toplevel) noexcept
 
     if (changed)
     {
+        ShowDesktop::Leave(); // The windows moved aside come back
         seat()->dismissPopups();
         updateDeskImage();
     }
@@ -449,7 +464,10 @@ void Workspaces::jumpTo(Int64 index, bool show) noexcept
     m_current = size_t(index);
 
     if (changed)
+    {
+        ShowDesktop::Leave();
         seat()->dismissPopups();
+    }
 
     m_spring.pause();
 
@@ -638,6 +656,7 @@ void Workspaces::Sync(ToplevelRole &toplevel) noexcept
 
 Workspaces::Evacuation Workspaces::Evacuate(LOutput *output) noexcept
 {
+    ShowDesktop::Reset(); // Where the windows really are
     Evacuation ev;
 
     if (!output)
@@ -780,6 +799,7 @@ void Workspaces::Place(const Evacuation &ev) noexcept
 
 std::vector<Workspaces::Placement> Workspaces::Placements() noexcept
 {
+    ShowDesktop::Reset(); // Where the windows really are
     std::vector<Placement> placements;
 
     for (Surface *surface : GetSurfaces())
@@ -825,6 +845,7 @@ void Workspaces::FollowOutputs(const std::vector<Placement> &placements) noexcep
 
 void Workspaces::EnsureReachable() noexcept
 {
+    ShowDesktop::Reset(); // Where the windows really are
     const auto &outputs { compositor()->outputs() };
 
     if (outputs.empty())
@@ -879,6 +900,68 @@ void Workspaces::ScheduleReachable() noexcept
 
     soon->start(300);
     later->start(1200);
+}
+
+Workspaces::Saved Workspaces::save() const noexcept
+{
+    Saved saved;
+    saved.lastDesktopId = m_lastDesktopId;
+
+    for (size_t i = 0; i < m_spaces.size(); i++)
+    {
+        // Left by its window: gone
+        if (m_spaces[i]->closing)
+            continue;
+
+        if (i == m_current)
+            saved.current = saved.spaces.size();
+
+        saved.spaces.push_back({ m_spaces[i]->desktopId, m_spaces[i]->toplevel });
+    }
+
+    return saved;
+}
+
+void Workspaces::restore(const Saved &saved) noexcept
+{
+    if (saved.spaces.empty() || saved.spaces[0].desktopId == 0 || m_spaces.size() != 1)
+        return;
+
+    m_spring.pause();
+    m_spaces[0]->desktopId = saved.spaces[0].desktopId;
+    size_t current { 0 };
+
+    for (size_t i = 1; i < saved.spaces.size(); i++)
+    {
+        const auto &space { saved.spaces[i] };
+
+        if (space.desktopId != 0)
+            insert(m_spaces.size(), nullptr).desktopId = space.desktopId;
+        else
+        {
+            ToplevelRole *toplevel { space.toplevel.get() };
+
+            // Closed, hidden or no longer fullscreen meanwhile
+            if (!toplevel || !toplevel->surface() || !toplevel->surface()->mapped() || toplevel->isMinimized() ||
+                !toplevel->pendingConfiguration().windowState.has(CZWinFullscreen))
+                continue;
+
+            // Over this output (its exclusive one: see Sync())
+            toplevel->keepReachable(&m_output);
+            insert(m_spaces.size(), toplevel);
+        }
+
+        if (i == saved.current)
+            current = m_spaces.size() - 1;
+    }
+
+    m_lastDesktopId = desktopIndex(saved.lastDesktopId) == SIZE_MAX ? m_spaces[0]->desktopId : saved.lastDesktopId;
+    m_current = current;
+    m_pos = Float64(current);
+    onPosChanged();
+    updateDeskImage();
+    notifyFullscreen(true);
+    ShellBus::EmitWorkspaceChanged(m_output.name(), UInt32(m_current));
 }
 
 size_t Workspaces::desktopIndex(UInt32 id) const noexcept

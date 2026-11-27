@@ -18,6 +18,7 @@
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Core/Events/CZPointerSwipeBeginEvent.h>
 #include <Core/Events/CZPointerSwipeEndEvent.h>
 #include <Louvre/Seat/LDND.h>
@@ -60,8 +61,18 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
         return;
     }
 
-    // Top bars hidden by fullscreen windows: revealed at the top edge, hidden when left
-    struct AtExit { ~AtExit() { TopbarAutoHide::PointerMoved(); } } atExit;
+    // Top bars hidden by fullscreen windows: revealed at the top edge, hidden when left. Dragging
+    // something over the windows moved aside by Show Desktop brings them back (to take the drop).
+    struct AtExit
+    {
+        ~AtExit()
+        {
+            TopbarAutoHide::PointerMoved();
+
+            if (seat()->dnd()->dragging())
+                ShowDesktop::DragMoved();
+        }
+    } atExit;
 
     // Exposé takes the pointer (but over the dock): no client gets it
     if (Expose::Active() && !draggingSurface() && !seat()->dnd()->dragging())
@@ -73,6 +84,24 @@ void Pointer::pointerMoveEvent(const CZPointerMoveEvent &e)
         {
             cursor()->repaintOutputs(true);
             setFocus(nullptr);
+            SetShapeCursor(CZCursorShape::Default);
+            return;
+        }
+
+        cursor()->setPos(prev);
+    }
+
+    // Show Desktop: the strips of the windows moved aside take no input but clicks (see ShowDesktop)
+    if (ShowDesktop::Active() && !draggingSurface() && !PointerSessionsActive() && !seat()->dnd()->dragging())
+    {
+        const SkPoint prev { cursor()->pos() };
+        cursor()->move(e.delta.x(), e.delta.y());
+
+        if (ShowDesktop::PointerMove())
+        {
+            cursor()->repaintOutputs(true);
+            setFocus(nullptr);
+            SSD::PointerMotion({});
             SetShapeCursor(CZCursorShape::Default);
             return;
         }
@@ -155,6 +184,10 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
     if (!seat()->dnd()->dragging() && !draggingSurface() && Expose::PointerButton(e))
         return;
 
+    // A strip of a window moved aside by Show Desktop: that window comes back, activated
+    if (!seat()->dnd()->dragging() && !draggingSurface() && ShowDesktop::PointerButton(e))
+        return;
+
     if (!focus() && !seat()->dnd()->dragging())
     {
         // Louvre doesn't stop move/resize sessions without a focused surface (e.g. started from the
@@ -214,8 +247,9 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 }
 
 // Three finger swipes: the first few units decide. Horizontal ones switch workspaces (see
-// Workspaces), vertical ones open/close Exposé (see Expose). Others go to clients.
-enum class SwipeAxis { None, Undecided, Horizontal, Vertical };
+// Workspaces), vertical ones open/close Exposé (see Expose), or, down while it's closed, show the
+// desktop (and up leaves it, see ShowDesktop). Others go to clients.
+enum class SwipeAxis { None, Undecided, Horizontal, Vertical, Desktop };
 static SwipeAxis s_swipeAxis { SwipeAxis::None };
 static SkPoint s_swipeStart {};
 static constexpr SkScalar SwipeDecideDistance { 12.f };
@@ -250,8 +284,15 @@ void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
         if (std::abs(s_swipeStart.x()) > std::abs(s_swipeStart.y()))
         {
             s_swipeAxis = SwipeAxis::Horizontal;
+            ShowDesktop::Leave(); // The windows moved aside come back
             Workspaces::SwipeBegin(3);
             Workspaces::SwipeUpdate(3, s_swipeStart);
+        }
+        else if (ShowDesktop::Active() || (!Expose::Active() && s_swipeStart.y() > 0.f))
+        {
+            s_swipeAxis = SwipeAxis::Desktop;
+            ShowDesktop::SwipeBegin();
+            ShowDesktop::SwipeUpdate(s_swipeStart);
         }
         else
         {
@@ -266,6 +307,9 @@ void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
         return;
     case SwipeAxis::Vertical:
         Expose::SwipeUpdate(e.delta);
+        return;
+    case SwipeAxis::Desktop:
+        ShowDesktop::SwipeUpdate(e.delta);
         return;
     }
 }
@@ -285,6 +329,9 @@ void Pointer::pointerSwipeEndEvent(const CZPointerSwipeEndEvent &e)
         break;
     case SwipeAxis::Vertical:
         Expose::SwipeEnd(e.cancelled);
+        break;
+    case SwipeAxis::Desktop:
+        ShowDesktop::SwipeEnd(e.cancelled);
         break;
     default:
         break;

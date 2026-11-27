@@ -1,5 +1,6 @@
 #include <Effects/Expose.h>
 #include <Effects/Snapshot.h>
+#include <Effects/ShowDesktop.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/Workspaces.h>
 #include <Core/Crystals.h>
@@ -92,6 +93,25 @@ Expose::Expose() noexcept :
             deactivate();
         })
 {}
+
+void Expose::Reset() noexcept
+{
+    if (!s_expose)
+        return;
+
+    Expose &e { *s_expose };
+    e.m_spring.pause();
+    e.m_zoom.pause();
+    e.m_addAnim.pause();
+    e.m_open = false;
+    e.m_swiping = false;
+    e.m_zoomThumb = nullptr;
+    e.m_zoomScreen = nullptr;
+    e.m_progress = 0.0;
+    e.deactivate();
+    e.notify(false);
+    s_expose.reset();
+}
 
 Expose::~Expose()
 {
@@ -935,6 +955,9 @@ void Expose::activate() noexcept
 
     if (!m_output)
         return;
+
+    // The windows moved aside: back where they are right away (laid out from there)
+    ShowDesktop::Reset();
 
     m_active = true;
     notify(true);

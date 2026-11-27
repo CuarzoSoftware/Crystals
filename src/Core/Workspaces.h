@@ -125,6 +125,10 @@ public:
 
     static void Clear() noexcept;
 
+    /// Every output shows its current workspace right away: slides and swipes in progress end
+    /// (e.g. the session is being left, see SessionState).
+    static void FinishAll() noexcept;
+
     /**
      * @brief The windows of an output going away, and the output they go to (see Evacuate()).
      */
@@ -186,6 +190,29 @@ public:
     static void ScheduleReachable() noexcept;
 
     /* -------------------------------- Per output -------------------------------- */
+
+    /// An output's workspaces, to recreate them on another Output object (see SessionState).
+    struct Saved
+    {
+        struct Space
+        {
+            UInt32 desktopId { 0 };        ///< A desktop's (0: a fullscreen window's)
+            CZWeak<ToplevelRole> toplevel; ///< The fullscreen window
+        };
+        std::vector<Space> spaces; ///< In order (those being closed left out)
+        size_t current { 0 };      ///< The one shown (index in spaces)
+        UInt32 lastDesktopId { 0 };
+    };
+
+    Saved save() const noexcept;
+
+    /**
+     * @brief Recreates saved workspaces on these (new ones: just their first desktop): the desktops
+     *        with the ids they had (their windows still refer to them), the fullscreen windows' ones
+     *        if the window is still there and fullscreen (now on this output), showing the one that
+     *        was shown (the first desktop if it's gone).
+     */
+    void restore(const Saved &saved) noexcept;
 
     Output &output() const noexcept { return m_output; }
     size_t count() const noexcept { return m_spaces.size(); }

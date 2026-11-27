@@ -13,7 +13,9 @@
 #include <Effects/MinimizeAnimation.h>
 #include <Effects/FullscreenAnimation.h>
 #include <Core/Workspaces.h>
+#include <Core/SessionState.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Effects/TopbarAutoHide.h>
 #include <Core/SessionLock.h>
 #include <Core/Screenshot.h>
@@ -48,6 +50,13 @@ void Output::initializeGL()
 
 void Output::paintGL()
 {
+    /* The session is being left, or is coming back (see SessionState): the outputs are being
+     * removed, or were just plugged again and nothing is back in place yet. Their threads still
+     * get to paint meanwhile (the backend suspends and resumes without the compositor's lock):
+     * nothing is laid out or drawn until everything is restored (they're repainted then). */
+    if (SessionState::Suspended())
+        return;
+
     auto core { CZCore::Get() };
     core->updateAnimations();
 
@@ -67,6 +76,7 @@ void Output::paintGL()
 
     // Exposé / fullscreen animations: snapshots of the windows that drew
     Expose::ProcessPending(*this);
+    ShowDesktop::ProcessPending(*this);
     FullscreenAnimation::ProcessPending();
 
     auto surface { RSurface::WrapImage(image()) };
@@ -274,7 +284,7 @@ void Output::handleSurfaceCallbacks() noexcept
 
         // Drawn by a fullscreen animation: it keeps drawing (its new size is awaited)
         if (surface->view.view.renderedOnLastTarget() || idleCommit || surface->cursorRole() ||
-            FullscreenAnimation::WantsFrames(surface) || Expose::WantsFrames(surface))
+            FullscreenAnimation::WantsFrames(surface) || Expose::WantsFrames(surface) || ShowDesktop::WantsFrames(surface))
         {
             surface->view.view.clearRenderedOnLastTarget();
             surface->requestNextFrame();
@@ -283,7 +293,7 @@ void Output::handleSurfaceCallbacks() noexcept
         // Hidden top bars (see TopbarAutoHide) stay on their output (e.g. keeping their scale)
         // Hidden while the session is locked: they stay on their outputs too
         if (TopbarAutoHide::HidesSurface(surface) || Workspaces::IsParked(surface) || FullscreenAnimation::HidesSurface(surface) ||
-            Expose::HidesSurface(surface) || (SessionLockManager::IsLocked() && !SessionLockManager::IsLockClientSurface(surface)))
+            Expose::HidesSurface(surface) || ShowDesktop::HidesSurface(surface) || (SessionLockManager::IsLocked() && !SessionLockManager::IsLockClientSurface(surface)))
             continue;
 
         bool outputFound;

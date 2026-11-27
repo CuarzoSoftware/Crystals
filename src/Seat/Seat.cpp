@@ -3,6 +3,8 @@
 #include <Louvre/Cursor/LCursor.h>
 #include <Seat/Output.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
+#include <Roles/ToplevelRole.h>
 #include <Core/Workspaces.h>
 #include <Core/SessionLock.h>
 #include <Louvre/Roles/LSubsurfaceRole.h>
@@ -19,6 +21,7 @@
 #include <Scene/Scene.h>
 #include <Seat/Seat.h>
 #include <Core/OutputConfig.h>
+#include <Core/SessionState.h>
 #include <Effects/ResizeBlackout.h>
 
 #include <Roles/Surface.h>
@@ -39,6 +42,8 @@ void Seat::activeToplevelChanged(LToplevelRole *prev) noexcept
 
     if (activeToplevel())
     {
+        // The windows moved aside come back
+        ShowDesktop::WindowActivated(static_cast<ToplevelRole*>(activeToplevel()));
         activeToplevel()->surface()->backgroundBlur()->configureState(LBackgroundBlur::Enabled);
         GetCompositor()->deactivateDesk(); // A window took over from the desktop
     }
@@ -78,10 +83,18 @@ void Seat::configureInputDevices() noexcept
 
 void Seat::enabledChanged()
 {
+    // Leaving the session (another TTY): the outputs are about to be removed, and plugged again once
+    // back. Where everything is now is remembered, and put back then (see SessionState)
+    if (!enabled())
+        SessionState::Save();
+
     LSeat::enabledChanged();
 
     if (enabled())
+    {
         configureInputDevices();
+        SessionState::Restore();
+    }
 }
 
 void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
@@ -91,7 +104,9 @@ void Seat::inputDevicePlugged(std::shared_ptr<CZInputDevice> dev)
 
 void Seat::outputPlugged(LOutput *output)
 {
+    ShowDesktop::Reset(); // The windows back where they are, before the outputs move
     OutputConfig::OutputPlugged(output);
+    SessionState::OutputPlugged(); // Back in the session without outputs until now
 }
 
 void Seat::outputUnplugged(LOutput *output)
@@ -99,6 +114,17 @@ void Seat::outputUnplugged(LOutput *output)
     // Exposé shown there: gone with it
     if (Expose::ShownOn() && static_cast<LOutput*>(Expose::ShownOn()) == output)
         Expose::Clear();
+
+    // The session was left (see SessionState): it's not gone, its windows stay where they are
+    if (SessionState::Suspended())
+    {
+        static_cast<Output*>(output)->workspaces.reset();
+        static_cast<Output*>(output)->autoHide.reset(); // Its top bar's slide, if any
+        Output::Configuring = true;
+        LSeat::outputUnplugged(output);
+        Output::Configuring = false;
+        return;
+    }
 
     // Found while it's there, placed once it's removed and the others rearranged (their windows
     // move with them)

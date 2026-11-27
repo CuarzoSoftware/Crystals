@@ -12,6 +12,7 @@ public:
     Seat(const void *params) noexcept;
     void configureLibinputDevice(libinput_device *dev) noexcept;
     void configureInputDevices() noexcept;
+    /// The session was left (another TTY) or is back: see SessionState.
     void enabledChanged() override;
 
     void activeToplevelChanged(LToplevelRole *prev) noexcept override;
@@ -21,7 +22,8 @@ public:
     void outputPlugged(LOutput *output) override;
 
     /// Its windows go to the closest output (see Workspaces::Evacuate()), then the saved setup of the
-    /// remaining ones is restored, if any (see OutputConfig::Restore()).
+    /// remaining ones is restored, if any (see OutputConfig::Restore()). Not while the session is
+    /// left (another TTY): everything is put back once it's back (see SessionState).
     void outputUnplugged(LOutput *output) override;
 
     /**

@@ -11,6 +11,7 @@
 #include <Decorations/SSD.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Core/SessionLock.h>
 #include <Core/Screenshot.h>
 
@@ -31,9 +32,9 @@ void Keyboard::keyEvent(const CZKeyboardKeyEvent &e)
     if (Screenshot::KeyEvent(e))
         return;
 
-    // Ctrl+Super+Up/Down (Exposé), Escape while it's shown, Ctrl+Super+Left/Right (workspaces):
-    // never sent to clients
-    if (Expose::KeyEvent(e) || Workspaces::KeyEvent(e))
+    // Ctrl+Super+Up/Down (Exposé), Escape while it's shown, Ctrl+Super+Left/Right (workspaces),
+    // Super+D (Show Desktop): never sent to clients
+    if (Expose::KeyEvent(e) || Workspaces::KeyEvent(e) || ShowDesktop::KeyEvent(e))
         return;
 
     LKeyboard::keyEvent(e);

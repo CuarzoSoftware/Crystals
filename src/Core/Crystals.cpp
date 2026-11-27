@@ -39,6 +39,7 @@
 #include <Core/OutputConfig.h>
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
+#include <Effects/ShowDesktop.h>
 #include <Core/SoundSettings.h>
 #include <Core/Attention.h>
 #include <Core/ShellBus.h>
@@ -280,6 +281,7 @@ void Crystals::uninitialized() noexcept
     MinimizeAnimation::Clear();
     OpenFromIcon::Clear();
     Expose::Clear();
+    ShowDesktop::Clear();
     FullscreenAnimation::Clear();
     Workspaces::Clear();
     DNDReturnAnimation::Clear();

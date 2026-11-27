@@ -45,6 +45,7 @@
 #include <Core/ShellBus.h>
 #include <Core/KeyboardSettings.h>
 #include <Core/TrackpadSettings.h>
+#include <Core/MouseSettings.h>
 
 #include <RResourceTracker.h>
 
@@ -71,6 +72,7 @@ void Crystals::initialized() noexcept
     initColorScheme();
     SSD::WarmUp(); // Not when the first decorated window appears (the font lookup stalls)
     TrackpadSettings::Init();
+    MouseSettings::Init();
     GetSeat()->configureInputDevices();
     // Like LCompositor::initialized(), but the outputs as saved (see OutputConfig)
     loadCursorShapes();
@@ -280,6 +282,7 @@ void Crystals::uninitialized() noexcept
     ShellBus::Clear();
     KeyboardSettings::Clear();
     TrackpadSettings::Clear();
+    MouseSettings::Clear();
     m_colorSchemeMonitor.reset();
     MinimizeAnimation::Clear();
     OpenFromIcon::Clear();

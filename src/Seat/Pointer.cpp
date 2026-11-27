@@ -20,6 +20,9 @@
 #include <Effects/Expose.h>
 #include <Effects/ShowDesktop.h>
 #include <Core/TrackpadSettings.h>
+#include <Core/MouseSettings.h>
+#include <Core/Events/CZPointerScrollEvent.h>
+#include <cmath>
 #include <Core/Events/CZPointerSwipeBeginEvent.h>
 #include <Core/Events/CZPointerSwipeEndEvent.h>
 #include <Louvre/Seat/LDND.h>
@@ -245,6 +248,27 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
         }
     }
     CZCore::Get()->sendEvent(e, *AKApp::Get());
+}
+
+void Pointer::pointerScrollEvent(const CZPointerScrollEvent &e)
+{
+    const Float32 speed { MouseSettings::ScrollSpeed() };
+    const bool wheel { e.source == CZPointerScrollEvent::Wheel || e.source == CZPointerScrollEvent::WheelLegacy || e.source == CZPointerScrollEvent::WheelTilt };
+
+    if (!wheel || speed == 1.f)
+    {
+        LPointer::pointerScrollEvent(e);
+        return;
+    }
+
+    CZPointerScrollEvent scaled { e };
+    scaled.axes.scale(speed);
+
+    // The high resolution steps too (120 per detent); the legacy ones are whole detents
+    if (e.source == CZPointerScrollEvent::Wheel)
+        scaled.axesDiscrete.set(Int32(std::lround(e.axesDiscrete.x() * speed)), Int32(std::lround(e.axesDiscrete.y() * speed)));
+
+    LPointer::pointerScrollEvent(scaled);
 }
 
 // Three finger swipes: the first few units decide. Horizontal ones switch workspaces (see

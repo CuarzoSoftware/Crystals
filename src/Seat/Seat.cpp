@@ -28,6 +28,7 @@
 #include <Core/SoundSettings.h>
 #include <Core/KeyboardSettings.h>
 #include <Core/TrackpadSettings.h>
+#include <Core/MouseSettings.h>
 
 #include <libinput.h>
 
@@ -70,7 +71,8 @@ void Seat::configureLibinputDevice(libinput_device *dev) noexcept
         return;
     }
 
-    libinput_device_config_scroll_set_natural_scroll_enabled(dev, 1);
+    // The other pointer devices as chosen there too (see MouseSettings)
+    MouseSettings::Configure(dev);
 }
 
 void Seat::configureInputDevices() noexcept

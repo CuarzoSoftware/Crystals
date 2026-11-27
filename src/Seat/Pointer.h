@@ -12,6 +12,9 @@ public:
     void pointerMoveEvent(const CZPointerMoveEvent &e) override;
     void pointerButtonEvent(const CZPointerButtonEvent &e) override;
 
+    // The wheel scrolls as fast as chosen in System Settings (see MouseSettings)
+    void pointerScrollEvent(const CZPointerScrollEvent &e) override;
+
     // Three finger swipes switch workspaces (see Workspaces), others go to clients
     void pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e) override;
     void pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e) override;

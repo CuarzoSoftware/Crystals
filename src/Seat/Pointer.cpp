@@ -19,6 +19,7 @@
 #include <Core/Workspaces.h>
 #include <Effects/Expose.h>
 #include <Effects/ShowDesktop.h>
+#include <Core/TrackpadSettings.h>
 #include <Core/Events/CZPointerSwipeBeginEvent.h>
 #include <Core/Events/CZPointerSwipeEndEvent.h>
 #include <Louvre/Seat/LDND.h>
@@ -248,15 +249,19 @@ void Pointer::pointerButtonEvent(const CZPointerButtonEvent &e)
 
 // Three finger swipes: the first few units decide. Horizontal ones switch workspaces (see
 // Workspaces), vertical ones open/close Exposé (see Expose), or, down while it's closed, show the
-// desktop (and up leaves it, see ShowDesktop). Others go to clients.
+// desktop (and up leaves it, see ShowDesktop). Others, and those turned off in System Settings
+// (see TrackpadSettings), go to clients.
 enum class SwipeAxis { None, Undecided, Horizontal, Vertical, Desktop };
 static SwipeAxis s_swipeAxis { SwipeAxis::None };
 static SkPoint s_swipeStart {};
+static CZPointerSwipeBeginEvent s_swipeBegin; // Sent to the client if the swipe turns out to be its
 static constexpr SkScalar SwipeDecideDistance { 12.f };
 
 void Pointer::pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e)
 {
-    if (e.fingers != 3 || SessionLockManager::IsLocked())
+    const bool anyEnabled { TrackpadSettings::WorkspaceSwipe() || TrackpadSettings::Expose() || TrackpadSettings::ShowDesktop() };
+
+    if (e.fingers != 3 || !anyEnabled || SessionLockManager::IsLocked())
     {
         LPointer::pointerSwipeBeginEvent(e);
         return;
@@ -264,6 +269,7 @@ void Pointer::pointerSwipeBeginEvent(const CZPointerSwipeBeginEvent &e)
 
     s_swipeAxis = SwipeAxis::Undecided;
     s_swipeStart = SkPoint::Make(0, 0);
+    s_swipeBegin = e;
 }
 
 void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
@@ -280,25 +286,36 @@ void Pointer::pointerSwipeUpdateEvent(const CZPointerSwipeUpdateEvent &e)
         if (s_swipeStart.length() < SwipeDecideDistance)
             return;
 
+        const bool sideways { std::abs(s_swipeStart.x()) > std::abs(s_swipeStart.y()) };
+
         // Sideways switches workspaces (Exposé too, see Expose), up/down opens/closes Exposé
-        if (std::abs(s_swipeStart.x()) > std::abs(s_swipeStart.y()))
+        if (sideways && TrackpadSettings::WorkspaceSwipe())
         {
             s_swipeAxis = SwipeAxis::Horizontal;
             ShowDesktop::Leave(); // The windows moved aside come back
             Workspaces::SwipeBegin(3);
             Workspaces::SwipeUpdate(3, s_swipeStart);
         }
-        else if (ShowDesktop::Active() || (!Expose::Active() && s_swipeStart.y() > 0.f))
+        else if (!sideways && TrackpadSettings::ShowDesktop() && (ShowDesktop::Active() || (!Expose::Active() && s_swipeStart.y() > 0.f)))
         {
             s_swipeAxis = SwipeAxis::Desktop;
             ShowDesktop::SwipeBegin();
             ShowDesktop::SwipeUpdate(s_swipeStart);
         }
-        else
+        else if (!sideways && TrackpadSettings::Expose() && !ShowDesktop::Active() && (Expose::Active() || s_swipeStart.y() < 0.f))
         {
             s_swipeAxis = SwipeAxis::Vertical;
             Expose::SwipeBegin();
             Expose::SwipeUpdate(s_swipeStart);
+        }
+        else
+        {
+            // Turned off: the client's, from its start
+            s_swipeAxis = SwipeAxis::None;
+            LPointer::pointerSwipeBeginEvent(s_swipeBegin);
+            CZPointerSwipeUpdateEvent update { e };
+            update.delta = s_swipeStart;
+            LPointer::pointerSwipeUpdateEvent(update);
         }
         return;
     }

@@ -27,6 +27,7 @@
 #include <Roles/Surface.h>
 #include <Core/SoundSettings.h>
 #include <Core/KeyboardSettings.h>
+#include <Core/TrackpadSettings.h>
 
 #include <libinput.h>
 
@@ -62,17 +63,14 @@ void Seat::configureLibinputDevice(libinput_device *dev) noexcept
         return;
     }
 
-    // Disable while typing
-    libinput_device_config_dwt_set_enabled(dev, LIBINPUT_CONFIG_DWT_DISABLED);
+    // Touchpads as chosen in System Settings (see TrackpadSettings)
+    if (TrackpadSettings::Configure(dev))
+    {
+        libinput_device_config_dwt_set_enabled(dev, LIBINPUT_CONFIG_DWT_DISABLED); // Not disabled while typing
+        return;
+    }
 
-    // Disable touchpad click areas
-    libinput_device_config_click_set_method(dev, LIBINPUT_CONFIG_CLICK_METHOD_CLICKFINGER);
-
-    // Enable natural scrolling
     libinput_device_config_scroll_set_natural_scroll_enabled(dev, 1);
-
-    // Tap to click
-    /* libinput_device_config_tap_set_enabled(libinputDev, LIBINPUT_CONFIG_TAP_ENABLED); */
 }
 
 void Seat::configureInputDevices() noexcept
